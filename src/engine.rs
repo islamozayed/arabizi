@@ -1,20 +1,28 @@
 use std::collections::HashMap;
 
 use crate::dictionary::build_dictionary;
-use crate::mappings::all_mappings;
+use crate::mappings::{
+    is_vowel_char, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS, SHORT_VOWELS,
+};
 
 /// The main transliteration engine.
 /// Converts Arabizi (Franco Arabic) text into Arabic script.
+///
+/// Strategy:
+/// 1. Dictionary lookup for known words (highest quality)
+/// 2. Context-aware rule-based transliteration:
+///    - Consonants map 1:1 (no ambiguity)
+///    - Long vowels (aa, ee, oo) → standalone Arabic letters
+///    - Short vowels between consonants → dropped (Arabic omits short vowels)
+///    - Short vowels at word start/end → standalone letters
 pub struct TransliterationEngine {
     dictionary: HashMap<String, Vec<String>>,
-    mappings: Vec<(&'static str, &'static [&'static str])>,
 }
 
 impl TransliterationEngine {
     pub fn new() -> Self {
         Self {
             dictionary: build_dictionary(),
-            mappings: all_mappings(),
         }
     }
 
@@ -43,8 +51,7 @@ impl TransliterationEngine {
             .map(|w| self.transliterate_word(w))
             .collect();
 
-        // Build combined results — take top candidate for each word
-        // then also provide the top alternative if any word has multiple candidates
+        // Build combined results
         let mut results = Vec::new();
 
         // Primary: best candidate for each word
@@ -78,8 +85,7 @@ impl TransliterationEngine {
     }
 
     /// Transliterate a single word.
-    /// Returns candidates ordered by likelihood.
-    fn transliterate_word(&self, word: &str) -> Vec<String> {
+    pub fn transliterate_word(&self, word: &str) -> Vec<String> {
         let word = word.to_lowercase();
 
         // Dictionary lookup first
@@ -88,81 +94,102 @@ impl TransliterationEngine {
         }
 
         // Rule-based transliteration
-        self.rule_based_transliterate(&word)
+        vec![self.rule_based_transliterate(&word)]
     }
 
-    /// Apply mapping rules to convert an Arabizi word to Arabic.
-    /// Uses greedy longest-match from left to right.
-    /// Returns multiple candidates when mappings are ambiguous.
-    fn rule_based_transliterate(&self, word: &str) -> Vec<String> {
-        // Build a sequence of candidate groups for each position
-        let char_groups = self.parse_to_groups(word);
-
-        if char_groups.is_empty() {
-            return vec![word.to_string()];
-        }
-
-        // Generate candidates by combining groups
-        // Limit to avoid combinatorial explosion
-        self.combine_groups(&char_groups, 5)
-    }
-
-    /// Parse input into groups of Arabic character candidates.
-    /// Each group represents one matched pattern position.
-    fn parse_to_groups(&self, input: &str) -> Vec<Vec<String>> {
-        let mut groups = Vec::new();
-        let mut pos = 0;
-        let chars: Vec<char> = input.chars().collect();
+    /// Context-aware rule-based transliteration.
+    /// Produces a single best result (no ambiguity explosion).
+    fn rule_based_transliterate(&self, word: &str) -> String {
+        let chars: Vec<char> = word.chars().collect();
         let len = chars.len();
+        let mut result = String::new();
+        let mut pos = 0;
 
         while pos < len {
             let remaining: String = chars[pos..].iter().collect();
-            let mut matched = false;
 
-            // Try each mapping pattern (already sorted longest-first)
-            for (pattern, candidates) in &self.mappings {
-                if remaining.starts_with(pattern) {
-                    groups.push(candidates.iter().map(|s| s.to_string()).collect());
-                    pos += pattern.len();
-                    matched = true;
-                    break;
+            // 1. Try consonant mappings (longest first — they're ordered that way)
+            if let Some((pattern, arabic)) = Self::match_consonant(&remaining) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                continue;
+            }
+
+            // 2. Try long vowel mappings
+            if let Some((pattern, arabic)) = Self::match_long_vowel(&remaining) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                continue;
+            }
+
+            // 3. Handle short vowels with context
+            if pos < len && is_vowel_char(chars[pos]) {
+                let at_start = pos == 0;
+                let at_end = pos == len - 1;
+                // Check if next non-vowel position is end of word
+                let before_final_consonant = pos + 1 == len - 1;
+
+                if at_start {
+                    // Word-initial vowel → alef variant
+                    match chars[pos] {
+                        'i' => result.push_str("إ"),
+                        'u' => result.push_str("أ"),
+                        'o' => result.push_str("أ"),
+                        _ => result.push_str("ا"),  // a, e
+                    }
+                    pos += 1;
+                } else if at_end {
+                    // Word-final vowel → standalone letter
+                    if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
+                        result.push_str(arabic);
+                    }
+                    pos += 1;
+                } else if before_final_consonant {
+                    // Vowel before final consonant — keep it (e.g., the 'a' in "kitab")
+                    if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
+                        result.push_str(arabic);
+                    }
+                    pos += 1;
+                } else {
+                    // Short vowel between consonants — drop it
+                    pos += 1;
                 }
+                continue;
             }
 
-            if !matched {
-                // Keep the character as-is (punctuation, spaces, etc.)
-                groups.push(vec![chars[pos].to_string()]);
-                pos += 1;
-            }
+            // 4. Unknown character — keep as-is
+            result.push(chars[pos]);
+            pos += 1;
         }
 
-        groups
+        result
     }
 
-    /// Combine groups of candidates into full word candidates.
-    /// Limits output to `max_results` to avoid explosion.
-    fn combine_groups(&self, groups: &[Vec<String>], max_results: usize) -> Vec<String> {
-        let mut results: Vec<String> = vec![String::new()];
-
-        for group in groups {
-            let mut new_results = Vec::new();
-            for existing in &results {
-                for candidate in group {
-                    let combined = format!("{}{}", existing, candidate);
-                    new_results.push(combined);
-                    if new_results.len() >= max_results * 10 {
-                        break;
-                    }
-                }
-                if new_results.len() >= max_results * 10 {
-                    break;
-                }
+    fn match_consonant(input: &str) -> Option<(&'static str, &'static str)> {
+        for (pattern, arabic) in CONSONANT_MAPPINGS {
+            if input.starts_with(pattern) {
+                return Some((pattern, arabic));
             }
-            results = new_results;
         }
+        None
+    }
 
-        results.truncate(max_results);
-        results
+    fn match_long_vowel(input: &str) -> Option<(&'static str, &'static str)> {
+        for (pattern, arabic) in LONG_VOWEL_MAPPINGS {
+            if input.starts_with(pattern) {
+                return Some((pattern, arabic));
+            }
+        }
+        None
+    }
+
+    fn match_short_vowel(input: &str) -> Option<(&'static str, &'static str)> {
+        for (pattern, arabic) in SHORT_VOWELS {
+            if input.starts_with(pattern) {
+                return Some((pattern, arabic));
+            }
+        }
+        None
     }
 }
 
@@ -209,14 +236,23 @@ mod tests {
     }
 
     #[test]
-    fn rule_based_simple() {
+    fn rule_based_saba7() {
         let e = engine();
-        let results = e.transliterate("bism");
-        // Should produce something reasonable via rules
+        let results = e.transliterate("saba7");
+        // Should produce صباح via rule-based (s=س, short a dropped, b=ب, short a dropped, 7=ح)
+        // Actually: s→س, a at position 1 (between consonants, drop), b→ب, a at position 3 (before final consonant, keep), 7→ح
         assert!(!results.is_empty());
-        // First character should start with ba
-        assert!(results[0].starts_with("بـ") || results[0].starts_with("ب"),
-            "Expected result starting with ب, got {:?}", results);
+        let first = &results[0];
+        assert!(first.contains("ب"), "Expected ب in '{}'", first);
+        assert!(first.contains("ح"), "Expected ح in '{}'", first);
+    }
+
+    #[test]
+    fn rule_based_no_ambiguity_explosion() {
+        let e = engine();
+        let results = e.transliterate("saba7");
+        // Should produce exactly 1 result (no ambiguity)
+        assert_eq!(results.len(), 1, "Expected 1 result, got {:?}", results);
     }
 
     #[test]
@@ -224,7 +260,6 @@ mod tests {
         let e = engine();
         let results = e.transliterate("yalla habibi");
         assert!(!results.is_empty());
-        // Should contain both words transliterated
         assert!(results[0].contains("يلا"), "Expected يلا in '{}'", results[0]);
         assert!(results[0].contains("حبيبي"), "Expected حبيبي in '{}'", results[0]);
     }
@@ -249,7 +284,6 @@ mod tests {
     #[test]
     fn number_mappings_work() {
         let e = engine();
-        // "7" alone should map via rules to ح
         let results = e.transliterate_word("7");
         assert!(results.iter().any(|r| r.contains("ح")),
             "Expected ح for '7', got {:?}", results);
@@ -261,5 +295,16 @@ mod tests {
         let results = e.transliterate_word("sh");
         assert!(results.iter().any(|r| r.contains("ش")),
             "Expected ش for 'sh', got {:?}", results);
+    }
+
+    #[test]
+    fn word_initial_vowel() {
+        let e = engine();
+        let results = e.transliterate("ana");
+        // "ana" = I in Arabic → انا
+        // a(start)→ا, n→ن, a(end)→ا
+        let first = &results[0];
+        assert!(first.starts_with("ا") || first.starts_with("أ"),
+            "Expected word-initial alef in '{}'", first);
     }
 }

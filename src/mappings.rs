@@ -1,100 +1,100 @@
 /// Arabizi to Arabic character mappings.
 ///
-/// Mappings are ordered longest-first so the engine can greedily match
-/// multi-character sequences (e.g. "sh" before "s").
+/// Design principles:
+/// - Each consonant maps to ONE primary Arabic letter (no ambiguity)
+/// - Numbers are used specifically for emphatic/special letters (that's the point of Arabizi)
+/// - Vowels are context-dependent: short vowels between consonants are dropped,
+///   long vowels (aa, ee, oo, etc.) become standalone letters
 ///
-/// Each entry is (arabizi_pattern, &[arabic_candidates]).
-/// Multiple candidates handle ambiguity (e.g. "s" could be س or ص).
+/// The engine uses these mappings; ambiguity is resolved by the dictionary, not here.
 
-// Numbers used as Arabic letters
-pub const NUMBER_MAPPINGS: &[(&str, &[&str])] = &[
-    ("2", &["ء"]),        // hamza
-    ("3'", &["غ"]),       // ghayn (3 + apostrophe variant)
-    ("3a", &["ع"]),       // ayn followed by alef
-    ("3", &["ع"]),        // ayn
-    ("5", &["خ"]),        // kha
-    ("6", &["ط"]),        // Ta (emphatic t)
-    ("7'", &["خ"]),       // kha (variant)
-    ("7", &["ح"]),        // Ha
-    ("8", &["ق"]),        // qaf (some dialects)
-    ("9'", &["ظ"]),       // DHa (variant)
-    ("9", &["ص"]),        // Sad
-];
-
-// Multi-character sequences (digraphs/trigraphs) — must be checked before singles
-pub const MULTI_CHAR_MAPPINGS: &[(&str, &[&str])] = &[
+/// Consonant mappings — one primary target each.
+/// Pattern → Arabic letter.
+pub const CONSONANT_MAPPINGS: &[(&str, &str)] = &[
     // Trigraphs
-    ("tch", &["تش"]),     // tch → taa + sheen
-    ("dha", &["ضا", "ذا"]),
-    ("tha", &["ثا", "طا"]),
-    ("sha", &["شا"]),
-    ("kha", &["خا"]),
-    ("gha", &["غا"]),
+    ("tch", "تش"),
 
-    // Digraphs
-    ("sh", &["ش"]),       // sheen
-    ("ch", &["تش", "ش"]), // could be tsh or sh depending on dialect
-    ("kh", &["خ"]),       // kha
-    ("th", &["ث", "ذ"]),  // could be tha or dhal
-    ("dh", &["ذ", "ض"]),  // could be dhal or Dad
-    ("gh", &["غ"]),       // ghayn
-    ("ph", &["ف"]),       // fa (used by some for emphasis)
+    // Digraphs (must come before single chars)
+    ("sh", "ش"),
+    ("ch", "ش"),      // common in Maghrebi dialect
+    ("kh", "خ"),
+    ("th", "ث"),
+    ("dh", "ذ"),
+    ("gh", "غ"),
+    ("ph", "ف"),
 
-    // Common vowel combinations
-    ("ou", &["و"]),       // waw
-    ("oo", &["و"]),       // long u
-    ("ee", &["ي"]),       // long i
-    ("aa", &["ا", "آ"]),  // long a / alef madda
-    ("ai", &["اي", "ع"]),
-    ("ei", &["اي"]),
-    ("au", &["او"]),
-    ("ii", &["ي"]),       // long i variant
-    ("uu", &["و"]),       // long u variant
+    // Numbers → emphatic/special letters (unambiguous by design)
+    ("2", "ء"),       // hamza
+    ("3'", "غ"),      // ghayn variant
+    ("3", "ع"),       // ayn
+    ("5", "خ"),       // kha
+    ("6'", "ظ"),      // DHa variant
+    ("6", "ط"),       // emphatic T
+    ("7'", "خ"),      // kha variant
+    ("7", "ح"),       // Ha
+    ("8", "ق"),       // qaf (Gulf)
+    ("9'", "ظ"),      // DHa variant
+    ("9", "ص"),       // Sad
+
+    // Single consonants — one mapping each
+    ("b", "ب"),
+    ("t", "ت"),
+    ("j", "ج"),
+    ("d", "د"),
+    ("r", "ر"),
+    ("z", "ز"),
+    ("s", "س"),
+    ("f", "ف"),
+    ("q", "ق"),
+    ("k", "ك"),
+    ("l", "ل"),
+    ("m", "م"),
+    ("n", "ن"),
+    ("h", "ه"),
+    ("w", "و"),
+    ("y", "ي"),
+    ("g", "ج"),       // Egyptian: ج
+    ("x", "خ"),
+    ("v", "ف"),
+    ("p", "ب"),
 ];
 
-// Single character mappings
-pub const SINGLE_CHAR_MAPPINGS: &[(&str, &[&str])] = &[
-    // Consonants
-    ("b", &["ب"]),
-    ("t", &["ت", "ط"]),   // could be ta or Ta
-    ("g", &["ج", "غ", "ق"]), // varies by dialect: geem, ghayn, or qaf
-    ("j", &["ج"]),
-    ("d", &["د", "ض"]),   // could be dal or Dad
-    ("r", &["ر"]),
-    ("z", &["ز", "ظ"]),   // could be zayn or DHa
-    ("s", &["س", "ص"]),   // could be seen or Sad
-    ("f", &["ف"]),
-    ("q", &["ق"]),
-    ("k", &["ك"]),
-    ("l", &["ل"]),
-    ("m", &["م"]),
-    ("n", &["ن"]),
-    ("h", &["ه", "ح"]),   // could be ha or Ha
-    ("w", &["و"]),
-    ("y", &["ي"]),
-    ("x", &["خ", "كس"]), // sometimes used for kha or ks
-    ("v", &["ف"]),        // used as fa in some dialects
-    ("p", &["ب"]),        // Arabic doesn't have p, maps to ba
-
-    // Vowels
-    ("a", &["ا", "ع", "أ"]),
-    ("e", &["ي", "ا", "إ"]),
-    ("i", &["ي", "إ"]),
-    ("o", &["و", "أ"]),
-    ("u", &["و", "أ"]),
+/// Long vowel patterns — these always produce a standalone Arabic letter.
+pub const LONG_VOWEL_MAPPINGS: &[(&str, &str)] = &[
+    ("aa", "ا"),
+    ("ee", "ي"),
+    ("ii", "ي"),
+    ("oo", "و"),
+    ("uu", "و"),
+    ("ou", "و"),
+    ("ei", "ي"),
+    ("ai", "ي"),
+    ("au", "و"),
 ];
 
-/// Returns all mapping tables in priority order (longest match first).
-/// Number mappings → multi-char → single char.
-pub fn all_mappings() -> Vec<(&'static str, &'static [&'static str])> {
-    let mut mappings = Vec::new();
-    mappings.extend_from_slice(NUMBER_MAPPINGS);
-    mappings.extend_from_slice(MULTI_CHAR_MAPPINGS);
-    mappings.extend_from_slice(SINGLE_CHAR_MAPPINGS);
+/// Short vowels — context-dependent.
+/// At word start: produce alef + vowel mark.
+/// Between consonants: usually dropped (Arabic doesn't write short vowels).
+/// At word end: may produce a letter.
+pub const SHORT_VOWELS: &[(&str, &str)] = &[
+    ("a", "ا"),
+    ("e", "ا"),
+    ("i", "ي"),
+    ("o", "و"),
+    ("u", "و"),
+];
 
-    // Sort by pattern length descending so greedy matching works
-    mappings.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-    mappings
+/// Check if a character is a consonant pattern starter.
+pub fn is_consonant_char(c: char) -> bool {
+    matches!(c, 'b' | 't' | 'j' | 'd' | 'r' | 'z' | 's' | 'f' | 'q' | 'k' | 'l' | 'm' | 'n' | 'h' | 'w' | 'y' | 'g' | 'x' | 'v' | 'p')
+}
+
+pub fn is_vowel_char(c: char) -> bool {
+    matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
+}
+
+pub fn is_number_char(c: char) -> bool {
+    matches!(c, '2' | '3' | '5' | '6' | '7' | '8' | '9')
 }
 
 #[cfg(test)]
@@ -102,26 +102,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mappings_sorted_longest_first() {
-        let m = all_mappings();
-        for window in m.windows(2) {
-            assert!(
-                window[0].0.len() >= window[1].0.len(),
-                "Mapping '{}' should come before '{}'",
-                window[0].0,
-                window[1].0
-            );
+    fn no_duplicate_consonant_patterns() {
+        let mut seen = std::collections::HashSet::new();
+        for (pattern, _) in CONSONANT_MAPPINGS {
+            assert!(seen.insert(pattern), "Duplicate consonant pattern: {}", pattern);
         }
     }
 
     #[test]
-    fn all_mappings_have_candidates() {
-        for (pattern, candidates) in all_mappings() {
-            assert!(
-                !candidates.is_empty(),
-                "Pattern '{}' has no candidates",
-                pattern
-            );
+    fn no_duplicate_long_vowel_patterns() {
+        let mut seen = std::collections::HashSet::new();
+        for (pattern, _) in LONG_VOWEL_MAPPINGS {
+            assert!(seen.insert(pattern), "Duplicate long vowel pattern: {}", pattern);
         }
     }
 }

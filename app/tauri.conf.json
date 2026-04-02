@@ -1,0 +1,32 @@
+{
+  "productName": "Arabizi",
+  "version": "0.1.0",
+  "identifier": "com.arabizi.app",
+  "build": {
+    "frontendDist": "./ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Arabizi",
+        "width": 460,
+        "height": 420,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "center": true,
+        "visible": false,
+        "skipTaskbar": true,
+        "shadow": true,
+        "transparent": true
+      }
+    ],
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "tooltip": "Arabizi — Franco Arabic Keyboard"
+    }
+  }
+}

@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ar" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arabizi</title>
+  <style>
+    :root {
+      --bg-base: rgba(32, 32, 32, 0.82);
+      --bg-card: rgba(45, 45, 45, 0.65);
+      --bg-input: rgba(20, 20, 20, 0.85);
+      --bg-hover: rgba(255, 255, 255, 0.06);
+      --bg-selected: rgba(96, 205, 255, 0.12);
+      --accent: #60cdff;
+      --accent-hover: #4cc2ff;
+      --text-primary: #ffffff;
+      --text-secondary: #c5c5c5;
+      --text-tertiary: #8b8b8b;
+      --text-accent: #60cdff;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-focus: #60cdff;
+      --radius: 8px;
+      --font: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+      --font-ar: 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-base);
+      overflow: hidden;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .flyout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Titlebar ── */
+    .titlebar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: rgba(255,255,255,0.02);
+      border-bottom: 1px solid var(--border);
+      cursor: grab;
+      flex-shrink: 0;
+    }
+    .titlebar:active { cursor: grabbing; }
+    .titlebar-label {
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .titlebar-hint {
+      font-size: 11px; color: var(--text-tertiary);
+    }
+    .titlebar-hint kbd {
+      display: inline-block; padding: 1px 5px;
+      background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 3px; font-size: 10px; font-family: var(--font);
+      color: var(--text-tertiary);
+    }
+
+    /* ── Input ── */
+    .input-area { padding: 12px 16px 8px; flex-shrink: 0; }
+
+    #arabizi-input {
+      width: 100%; padding: 9px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-bottom: 2px solid var(--text-tertiary);
+      border-radius: 6px 6px 0 0;
+      color: var(--text-primary); font-size: 14px; font-family: var(--font);
+      outline: none; transition: border-bottom-color 0.1s;
+    }
+    #arabizi-input::placeholder { color: var(--text-tertiary); font-style: italic; }
+    #arabizi-input:focus { border-bottom-color: var(--accent); }
+
+    /* ── Committed words preview ── */
+    .committed-line {
+      padding: 6px 16px;
+      min-height: 28px;
+      flex-shrink: 0;
+    }
+    .committed-text {
+      font-size: 20px; font-family: var(--font-ar);
+      color: var(--text-primary);
+      direction: rtl; text-align: right; line-height: 1.5;
+    }
+    .committed-text .committed-word {
+      display: inline; padding: 2px 4px; border-radius: 4px;
+      cursor: pointer; transition: background 0.08s;
+    }
+    .committed-text .committed-word:hover {
+      background: var(--bg-hover);
+      text-decoration: underline dotted;
+      text-decoration-color: var(--text-tertiary);
+      text-underline-offset: 4px;
+    }
+    .committed-text .committed-word.editing {
+      background: var(--bg-selected);
+    }
+
+    /* ── Current word label ── */
+    .current-word-label {
+      padding: 8px 16px 2px;
+      font-size: 11px; font-weight: 600;
+      color: var(--text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+
+    /* ── Candidate list ── */
+    .candidates {
+      flex: 1; overflow-y: auto;
+      padding: 4px 16px 12px;
+    }
+    .cand {
+      display: flex; align-items: center;
+      padding: 7px 12px; margin-bottom: 2px;
+      border-radius: 6px; cursor: pointer;
+      transition: background 0.06s;
+    }
+    .cand:hover { background: var(--bg-hover); }
+    .cand.selected { background: var(--bg-selected); }
+    .cand .idx {
+      color: var(--text-tertiary); font-size: 11px;
+      width: 20px; flex-shrink: 0; font-weight: 500;
+    }
+    .cand .ar {
+      font-size: 20px; font-family: var(--font-ar);
+      color: var(--text-primary); direction: rtl;
+      flex: 1; text-align: right;
+    }
+    .cand.selected .ar { color: var(--text-accent); }
+    .cand .shortcut-hint {
+      font-size: 10px; color: var(--text-tertiary);
+      margin-left: 8px; flex-shrink: 0;
+    }
+
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 32px 16px; gap: 8px;
+    }
+    .empty-state-icon { font-size: 28px; opacity: 0.35; }
+    .empty-state-text {
+      color: var(--text-tertiary); font-size: 12px; text-align: center; line-height: 1.6;
+    }
+
+    .candidates::-webkit-scrollbar { width: 4px; }
+    .candidates::-webkit-scrollbar-track { background: transparent; }
+    .candidates::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div class="flyout">
+    <div class="titlebar" data-tauri-drag-region>
+      <span class="titlebar-label">Arabizi</span>
+      <span class="titlebar-hint"><kbd>↑↓</kbd> navigate · <kbd>Space</kbd> confirm word · <kbd>Enter</kbd> paste</span>
+    </div>
+
+    <div class="input-area">
+      <input type="text" id="arabizi-input"
+        placeholder="Type Franco Arabic... (e.g. a7la masa)"
+        autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="committed-line" id="committed-line"></div>
+    <div class="current-word-label" id="current-label"></div>
+    <div class="candidates" id="candidates">
+      <div class="empty-state">
+        <div class="empty-state-icon">ع</div>
+        <div class="empty-state-text">
+          Type Arabizi and use <strong>↑↓</strong> to pick the right spelling<br>
+          <strong>Space</strong> confirms the word · <strong>Enter</strong> pastes all
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    const { writeText } = window.__TAURI__.clipboardManager;
+    const { getCurrentWindow } = window.__TAURI__.window;
+
+    const inputEl = document.getElementById('arabizi-input');
+    const committedEl = document.getElementById('committed-line');
+    const labelEl = document.getElementById('current-label');
+    const candsEl = document.getElementById('candidates');
+
+    // State
+    let committedWords = [];   // [{ input, arabic, candidates }]
+    let currentCandidates = [];
+    let currentInput = '';
+    let selectedIdx = 0;
+    let editingWordIdx = -1;   // if re-editing a committed word
+
+    // ── Show/reset ──
+    getCurrentWindow().listen('focus-input', () => {
+      committedWords = [];
+      currentCandidates = [];
+      currentInput = '';
+      selectedIdx = 0;
+      editingWordIdx = -1;
+      inputEl.value = '';
+      renderAll();
+      setTimeout(() => inputEl.focus(), 50);
+    });
+
+    // ── Input handler ──
+    let debounce;
+    inputEl.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(async () => {
+        // Extract just the current (last) word fragment
+        const raw = inputEl.value;
+
+        // If editing a committed word, the entire input is the replacement
+        if (editingWordIdx >= 0) {
+          currentInput = raw.trim();
+        } else {
+          currentInput = raw.trim();
+        }
+
+        if (!currentInput) {
+          currentCandidates = [];
+          selectedIdx = 0;
+          renderAll();
+          return;
+        }
+
+        const result = await invoke('transliterate', { input: currentInput });
+        // We only care about the last word's candidates for the picker
+        if (result.words.length > 0) {
+          // If multiple words typed without space-confirming, auto-commit earlier ones
+          if (editingWordIdx < 0) {
+            while (result.words.length > 1) {
+              const w = result.words.shift();
+              committedWords.push({
+                input: w.input,
+                arabic: w.candidates[0] || '',
+                candidates: w.candidates,
+              });
+            }
+          }
+          const lastWord = result.words[result.words.length - 1];
+          currentCandidates = lastWord.candidates;
+          currentInput = lastWord.input;
+        } else {
+          currentCandidates = [];
+        }
+
+        selectedIdx = 0;
+        renderAll();
+      }, 30);
+    });
+
+    // ── Keyboard ──
+    inputEl.addEventListener('keydown', async (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (editingWordIdx >= 0) {
+          // Cancel edit
+          editingWordIdx = -1;
+          inputEl.value = '';
+          currentCandidates = [];
+          currentInput = '';
+          renderAll();
+        } else {
+          getCurrentWindow().hide();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (currentCandidates.length > 0) {
+          selectedIdx = Math.min(selectedIdx + 1, currentCandidates.length - 1);
+          renderCandidates();
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (currentCandidates.length > 0) {
+          selectedIdx = Math.max(selectedIdx - 1, 0);
+          renderCandidates();
+        }
+        return;
+      }
+
+      // Space = confirm current word, move to next
+      if (e.key === ' ' && currentCandidates.length > 0 && currentInput) {
+        e.preventDefault();
+        confirmCurrentWord();
+        return;
+      }
+
+      // Enter = confirm current word (if any) + paste everything
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (currentCandidates.length > 0 && currentInput) {
+          confirmCurrentWord();
+        }
+        if (committedWords.length > 0) {
+          await commitAll();
+        }
+        return;
+      }
+
+      // Backspace when input is empty = un-commit the last word
+      if (e.key === 'Backspace' && inputEl.value === '' && committedWords.length > 0 && editingWordIdx < 0) {
+        e.preventDefault();
+        const last = committedWords.pop();
+        inputEl.value = last.input;
+        currentInput = last.input;
+        currentCandidates = last.candidates;
+        selectedIdx = 0;
+        renderAll();
+        return;
+      }
+
+      // Number keys are NOT used as shortcuts — they're part of Arabizi input
+    });
+
+    // ── Confirm current word ──
+    function confirmCurrentWord() {
+      const arabic = currentCandidates[selectedIdx] || currentCandidates[0] || currentInput;
+
+      if (editingWordIdx >= 0) {
+        // Replace the word being edited
+        committedWords[editingWordIdx] = {
+          input: currentInput,
+          arabic: arabic,
+          candidates: currentCandidates,
+        };
+        editingWordIdx = -1;
+      } else {
+        committedWords.push({
+          input: currentInput,
+          arabic: arabic,
+          candidates: currentCandidates,
+        });
+      }
+
+      inputEl.value = '';
+      currentInput = '';
+      currentCandidates = [];
+      selectedIdx = 0;
+      renderAll();
+      inputEl.focus();
+    }
+
+    // ── Click a committed word to re-edit ──
+    window.editWord = function(idx) {
+      editingWordIdx = idx;
+      const w = committedWords[idx];
+      inputEl.value = w.input;
+      currentInput = w.input;
+      currentCandidates = w.candidates;
+      selectedIdx = w.candidates.indexOf(w.arabic);
+      if (selectedIdx < 0) selectedIdx = 0;
+      renderAll();
+      inputEl.focus();
+      inputEl.select();
+    };
+
+    // ── Click a candidate ──
+    window.pickCandidate = function(idx) {
+      selectedIdx = idx;
+      confirmCurrentWord();
+    };
+
+    // ── Paste everything ──
+    async function commitAll() {
+      const text = committedWords.map(w => w.arabic).join(' ');
+      await writeText(text);
+      await getCurrentWindow().hide();
+      setTimeout(() => invoke('paste_from_clipboard'), 100);
+    }
+
+    // ── Rendering ──
+    function renderAll() {
+      renderCommitted();
+      renderLabel();
+      renderCandidates();
+    }
+
+    function renderCommitted() {
+      if (committedWords.length === 0) {
+        committedEl.innerHTML = '';
+        return;
+      }
+      const html = '<div class="committed-text">' +
+        committedWords.map((w, i) =>
+          `<span class="committed-word ${i === editingWordIdx ? 'editing' : ''}"
+                onclick="editWord(${i})">${w.arabic}</span>`
+        ).join(' ') +
+        '</div>';
+      committedEl.innerHTML = html;
+    }
+
+    function renderLabel() {
+      if (currentInput && currentCandidates.length > 0) {
+        const ctx = editingWordIdx >= 0 ? 'Editing' : 'Current word';
+        labelEl.textContent = `${ctx}: "${currentInput}"`;
+      } else if (committedWords.length > 0 && !currentInput) {
+        labelEl.textContent = 'Press Enter to paste, or keep typing';
+      } else {
+        labelEl.textContent = '';
+      }
+    }
+
+    function renderCandidates() {
+      if (currentCandidates.length === 0) {
+        if (committedWords.length === 0) {
+          candsEl.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">ع</div>
+              <div class="empty-state-text">
+                Type Arabizi and use <strong>↑↓</strong> to pick the right spelling<br>
+                <strong>Space</strong> confirms the word · <strong>Enter</strong> pastes all
+              </div>
+            </div>`;
+        } else {
+          candsEl.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-text">
+                Click any word above to change its spelling<br>
+                Press <strong>Enter</strong> to paste · keep typing to add more words
+              </div>
+            </div>`;
+        }
+        return;
+      }
+
+      candsEl.innerHTML = currentCandidates.map((c, i) => `
+        <div class="cand ${i === selectedIdx ? 'selected' : ''}"
+             onclick="pickCandidate(${i})">
+          <span class="idx">${i + 1}</span>
+          <span class="ar">${c}</span>
+        </div>
+      `).join('');
+
+      // Scroll selected into view
+      const sel = candsEl.querySelector('.cand.selected');
+      if (sel) sel.scrollIntoView({ block: 'nearest' });
+    }
+  </script>
+</body>
+</html>

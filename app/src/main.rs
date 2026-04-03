@@ -115,8 +115,13 @@ fn main() {
                     _ => {}
                 });
                 tray.on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
-                        toggle_overlay(tray.app_handle());
+                    if let TrayIconEvent::Click { button, button_state, .. } = event {
+                        // Only toggle on left-click press, not right-click (which opens the menu)
+                        if button == tauri::tray::MouseButton::Left
+                            && button_state == tauri::tray::MouseButtonState::Up
+                        {
+                            toggle_overlay(tray.app_handle());
+                        }
                     }
                 });
             }

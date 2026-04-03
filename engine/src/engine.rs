@@ -103,7 +103,15 @@ impl TransliterationEngine {
             candidates.push(no_vowels);
         }
 
-        // 5. Consonant swap variations — try swapping each ambiguous consonant one at a time
+        // 5. Tanween variations — "an" ending often means tanween fatha (اً) not literal ان
+        let tanween = Self::generate_tanween_variants(&candidates);
+        for t in tanween {
+            if !candidates.contains(&t) {
+                candidates.push(t);
+            }
+        }
+
+        // 6. Consonant swap variations — try swapping each ambiguous consonant one at a time
         let swaps = self.generate_consonant_swaps(&word);
         for swap in swaps {
             if !candidates.contains(&swap) {
@@ -117,6 +125,24 @@ impl TransliterationEngine {
         // Cap at 8 candidates
         candidates.truncate(8);
         candidates
+    }
+
+    /// Generate tanween fatha variants for candidates ending in ان.
+    /// In Arabic, words ending in "-an" in Arabizi often represent tanween fatha (ً)
+    /// rather than a literal alef-noon. E.g. "sahlan" → سهلاً not just سهلان.
+    fn generate_tanween_variants(candidates: &[String]) -> Vec<String> {
+        let mut variants = Vec::new();
+        for candidate in candidates {
+            if candidate.ends_with("ان") {
+                let base = &candidate[..candidate.len() - "ان".len()];
+                variants.push(format!("{}اً", base));
+            } else if candidate.ends_with("ن") && !candidate.ends_with("ان") {
+                // Cases where vowel was dropped: e.g. سهلن → سهلاً
+                let base = &candidate[..candidate.len() - "ن".len()];
+                variants.push(format!("{}اً", base));
+            }
+        }
+        variants
     }
 
     /// Generate variations by swapping one ambiguous consonant at a time.
@@ -205,10 +231,19 @@ impl TransliterationEngine {
                 let at_end = pos == len - 1;
                 let before_final = pos + 1 == len - 1;
 
+                // Word-final 'a' or 'e' after a consonant → taa marbuta (ة)
+                // This is the most common Arabic feminine ending
+                let is_taa_marbuta = at_end
+                    && (chars[pos] == 'a' || chars[pos] == 'e')
+                    && pos > 0
+                    && !is_vowel_char(chars[pos - 1]);
+
                 match vowel_mode {
                     VowelMode::KeepAll => {
                         if at_start {
                             Self::push_initial_vowel(&mut result, chars[pos]);
+                        } else if is_taa_marbuta {
+                            result.push_str("ة");
                         } else if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
                             result.push_str(arabic);
                         }
@@ -216,12 +251,16 @@ impl TransliterationEngine {
                     VowelMode::DropAll => {
                         if at_start {
                             Self::push_initial_vowel(&mut result, chars[pos]);
+                        } else if is_taa_marbuta {
+                            result.push_str("ة");
                         }
                         // Otherwise drop
                     }
                     VowelMode::DropMiddle => {
                         if at_start {
                             Self::push_initial_vowel(&mut result, chars[pos]);
+                        } else if is_taa_marbuta {
+                            result.push_str("ة");
                         } else if at_end || before_final {
                             if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
                                 result.push_str(arabic);
@@ -328,7 +367,7 @@ mod tests {
     fn dictionary_word_shukran() {
         let e = engine();
         let results = e.transliterate("shukran");
-        assert!(results.contains(&"شكرا".to_string()), "Expected شكرا in {:?}", results);
+        assert!(results.contains(&"شكرًا".to_string()), "Expected شكرًا in {:?}", results);
     }
 
     #[test]
@@ -415,5 +454,24 @@ mod tests {
         let results = e.transliterate_word("standard");
         assert!(results.len() <= 8,
             "Expected at most 8 candidates, got {}", results.len());
+    }
+
+    #[test]
+    fn taa_marbuta_at_word_end() {
+        let e = engine();
+        // "gameela" should produce جميلة with taa marbuta, not جميلا
+        let results = e.transliterate_word("gameela");
+        assert!(results.iter().any(|r| r.contains("ة")),
+            "Expected ة (taa marbuta) in candidates for 'gameela', got {:?}", results);
+    }
+
+    #[test]
+    fn taa_marbuta_not_after_vowel() {
+        let e = engine();
+        // "yalla" ends in 'a' but after another 'a' (vowel), not a consonant
+        // so it should NOT get taa marbuta
+        let results = e.transliterate_word("aa");
+        assert!(!results.iter().any(|r| r.contains("ة")),
+            "Should not have ة for 'aa', got {:?}", results);
     }
 }

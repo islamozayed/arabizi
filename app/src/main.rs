@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use arabizi_engine::TransliterationEngine;
+use arabizi_engine::{TransliterationEngine, UserPreferences};
 use enigo::{Enigo, Key, Keyboard, Settings, Direction};
 use serde::Serialize;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -16,6 +18,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 struct AppState {
     engine: TransliterationEngine,
+    prefs: UserPreferences,
+    prefs_path: PathBuf,
 }
 
 /// Per-word candidates for the frontend to render inline selection
@@ -48,14 +52,7 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
     let words: Vec<WordResult> = parts
         .iter()
         .map(|w| {
-            let mut candidates = state.engine.transliterate_word(w);
-            // Always provide the rule-based result as a fallback candidate
-            let rule_based = state.engine.transliterate(w);
-            for r in rule_based {
-                if !candidates.contains(&r) {
-                    candidates.push(r);
-                }
-            }
+            let candidates = state.engine.transliterate_word_ranked(w, Some(&state.prefs));
             WordResult {
                 input: w.to_string(),
                 candidates,
@@ -71,6 +68,17 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
         .join(" ");
 
     TransliterateResult { combined, words }
+}
+
+#[tauri::command]
+fn record_selection(state: tauri::State<'_, Mutex<AppState>>, input: String, arabic: String) {
+    let mut state = state.lock().unwrap();
+    state.prefs.record(&input, &arabic);
+    // Persist to disk (best-effort)
+    let json = state.prefs.to_json();
+    let path = state.prefs_path.clone();
+    drop(state);
+    let _ = fs::write(path, json);
 }
 
 #[tauri::command]
@@ -91,8 +99,27 @@ fn main() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(Mutex::new(AppState {
             engine: TransliterationEngine::new(),
+            prefs: UserPreferences::new(), // replaced in setup
+            prefs_path: PathBuf::new(),    // replaced in setup
         }))
         .setup(|app| {
+            // Load user preferences from app data directory
+            let app_data = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let _ = fs::create_dir_all(&app_data);
+            let prefs_path = app_data.join("user_prefs.json");
+            let prefs = if prefs_path.exists() {
+                let data = fs::read_to_string(&prefs_path).unwrap_or_default();
+                UserPreferences::from_json(&data)
+            } else {
+                UserPreferences::new()
+            };
+            {
+                let state_mutex = app.state::<Mutex<AppState>>();
+                let mut state = state_mutex.lock().unwrap();
+                state.prefs = prefs;
+                state.prefs_path = prefs_path;
+            }
+
             // Apply Mica/Acrylic blur effect on Windows
             if let Some(window) = app.get_webview_window("overlay") {
                 #[cfg(target_os = "windows")]
@@ -137,7 +164,7 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard])
+        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard, record_selection])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

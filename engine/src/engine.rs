@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use crate::dictionary::build_dictionary;
+use crate::frequency::FrequencyList;
 use crate::mappings::{
     is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS, SHORT_VOWELS,
 };
+use crate::user_prefs::UserPreferences;
 
 /// The main transliteration engine.
 ///
@@ -14,14 +16,21 @@ use crate::mappings::{
 ///    - Swapping ambiguous consonants (s→ص instead of س, etc.)
 ///    - Including/excluding short vowels
 ///    - Keeping all short vowels as standalone letters
+///
+/// Candidates are then ranked by:
+/// 1. User preference (previously selected candidates for this input)
+/// 2. Dictionary match bonus
+/// 3. Arabic word frequency (common real words rank higher)
 pub struct TransliterationEngine {
     dictionary: HashMap<String, Vec<String>>,
+    frequency: FrequencyList,
 }
 
 impl TransliterationEngine {
     pub fn new() -> Self {
         Self {
             dictionary: build_dictionary(),
+            frequency: FrequencyList::load(),
         }
     }
 
@@ -75,10 +84,16 @@ impl TransliterationEngine {
         results
     }
 
-    /// Transliterate a single word, returning multiple candidates.
+    /// Transliterate a single word, returning multiple ranked candidates.
     pub fn transliterate_word(&self, word: &str) -> Vec<String> {
+        self.transliterate_word_ranked(word, None)
+    }
+
+    /// Transliterate a single word with optional user preference ranking.
+    pub fn transliterate_word_ranked(&self, word: &str, prefs: Option<&UserPreferences>) -> Vec<String> {
         let word = word.to_lowercase();
         let mut candidates = Vec::new();
+        let is_dict_word = self.dictionary.contains_key(&word);
 
         // 1. Dictionary entries first
         if let Some(dict_entries) = self.dictionary.get(&word) {
@@ -116,15 +131,84 @@ impl TransliterationEngine {
         for swap in swaps {
             if !candidates.contains(&swap) {
                 candidates.push(swap);
-                if candidates.len() >= 8 {
-                    break;
-                }
             }
         }
+
+        // 7. Rank candidates by: user prefs > dictionary > frequency > unknown
+        self.rank_candidates(&word, &mut candidates, is_dict_word, prefs);
 
         // Cap at 8 candidates
         candidates.truncate(8);
         candidates
+    }
+
+    /// Rank candidates using user preferences, dictionary presence, and word frequency.
+    fn rank_candidates(
+        &self,
+        input: &str,
+        candidates: &mut Vec<String>,
+        is_dict_word: bool,
+        prefs: Option<&UserPreferences>,
+    ) {
+        let dict_entries: Vec<String> = self.dictionary
+            .get(input)
+            .cloned()
+            .unwrap_or_default();
+
+        candidates.sort_by(|a, b| {
+            let score_a = self.candidate_score(input, a, is_dict_word, &dict_entries, prefs);
+            let score_b = self.candidate_score(input, b, is_dict_word, &dict_entries, prefs);
+            // Higher score = better, so reverse order
+            score_b.cmp(&score_a)
+        });
+    }
+
+    /// Score a candidate. Higher = better.
+    fn candidate_score(
+        &self,
+        input: &str,
+        candidate: &str,
+        _is_dict_word: bool,
+        dict_entries: &[String],
+        prefs: Option<&UserPreferences>,
+    ) -> u64 {
+        let mut score: u64 = 0;
+
+        // User preference: 1M points per selection count (strongest signal)
+        if let Some(prefs) = prefs {
+            let user_score = prefs.score(input, candidate);
+            score += user_score as u64 * 1_000_000;
+        }
+
+        // Dictionary match: 100k bonus (curated entries are high quality)
+        if dict_entries.contains(&candidate.to_string()) {
+            score += 100_000;
+            // First dict entry gets extra bonus (it's the preferred form)
+            if dict_entries.first().map(|s| s.as_str()) == Some(candidate) {
+                score += 50_000;
+            }
+        }
+
+        // Frequency list: up to 50k points (real words beat gibberish)
+        // Words with individual Arabic tokens all in the frequency list score well.
+        // For single-word candidates, check directly.
+        // Score inversely proportional to rank (rank 0 = most common = highest score).
+        let words: Vec<&str> = candidate.split_whitespace().collect();
+        let mut freq_score: u64 = 0;
+        let mut all_found = true;
+        for w in &words {
+            if let Some(rank) = self.frequency.rank(w) {
+                // Inverse rank: lower rank = higher score
+                freq_score += 50_000u64.saturating_sub(rank as u64);
+            } else {
+                all_found = false;
+            }
+        }
+        if all_found && !words.is_empty() {
+            score += freq_score / words.len() as u64;
+        }
+
+        score
     }
 
     /// Generate tanween fatha variants for candidates ending in ان.
@@ -145,60 +229,156 @@ impl TransliterationEngine {
         variants
     }
 
-    /// Generate variations by swapping one ambiguous consonant at a time.
+    /// Generate variations by swapping ambiguous consonants.
+    /// Uses a substitution map to override specific positions, keeping full-word context
+    /// intact (so taa marbuta and other context-sensitive rules work correctly).
+    ///
+    /// Two strategies:
+    /// 1. Swap one instance at a time (e.g. لذيز for "lazeez")
+    /// 2. Swap ALL instances of the same pattern at once (e.g. لذيذ for "lazeez")
     fn generate_consonant_swaps(&self, word: &str) -> Vec<String> {
         let chars: Vec<char> = word.chars().collect();
         let len = chars.len();
         let mut results = Vec::new();
 
-        // Find positions of ambiguous consonants
+        // First, find all ambiguous positions: (position, pattern, alternatives)
+        let mut ambiguous_positions: Vec<(usize, &str, &[&str])> = Vec::new();
         let mut pos = 0;
         while pos < len {
             let remaining: String = chars[pos..].iter().collect();
-
-            // Check if this position matches an ambiguous consonant
+            let mut found = false;
             for (pattern, _primary, alternatives) in AMBIGUOUS_CONSONANTS {
                 if remaining.starts_with(pattern) {
-                    // For each alternative, rebuild the word with the swap
-                    for alt in *alternatives {
-                        let mut swapped = String::new();
-                        // Characters before this position
-                        let prefix: String = chars[..pos].iter().collect();
-                        swapped.push_str(&self.rule_based_transliterate_raw(&prefix));
-                        // The alternative
-                        swapped.push_str(alt);
-                        // Characters after this pattern
-                        let suffix: String = chars[pos + pattern.len()..].iter().collect();
-                        swapped.push_str(&self.rule_based_transliterate_raw(&suffix));
-
-                        if !results.contains(&swapped) {
-                            results.push(swapped);
-                        }
-                        if results.len() >= 5 {
-                            return results;
-                        }
-                    }
+                    ambiguous_positions.push((pos, pattern, alternatives));
+                    pos += pattern.len();
+                    found = true;
                     break;
                 }
             }
+            if !found {
+                if let Some((pattern, _)) = Self::match_consonant(&remaining) {
+                    pos += pattern.len();
+                } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
+                    pos += pattern.len();
+                } else {
+                    pos += 1;
+                }
+            }
+        }
 
-            // Advance past the current token
-            if let Some((pattern, _)) = Self::match_consonant(&remaining) {
-                pos += pattern.len();
-            } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
-                pos += pattern.len();
-            } else {
-                pos += 1;
+        // Strategy 1: Swap one at a time
+        for (i, &(_swap_pos, _pattern, alternatives)) in ambiguous_positions.iter().enumerate() {
+            for alt in alternatives {
+                let mut overrides = HashMap::new();
+                overrides.insert(i, *alt);
+                let swapped = self.transliterate_with_overrides(word, &ambiguous_positions, &overrides);
+                if !results.contains(&swapped) {
+                    results.push(swapped);
+                }
+            }
+        }
+
+        // Strategy 2: Swap ALL instances of the same pattern to the same alternative.
+        // E.g. "lazeez" has two "z" → swap both to ذ to get لذيذ.
+        let mut patterns_seen: Vec<&str> = Vec::new();
+        for &(_, pattern, _) in &ambiguous_positions {
+            if !patterns_seen.contains(&pattern) {
+                patterns_seen.push(pattern);
+            }
+        }
+
+        for target_pattern in &patterns_seen {
+            let matching_indices: Vec<usize> = ambiguous_positions
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, p, _))| *p == *target_pattern)
+                .map(|(i, _)| i)
+                .collect();
+
+            if matching_indices.len() < 2 {
+                continue; // Single instance already handled in strategy 1
+            }
+
+            let alternatives = ambiguous_positions[matching_indices[0]].2;
+            for alt in alternatives {
+                let mut overrides = HashMap::new();
+                for &idx in &matching_indices {
+                    overrides.insert(idx, *alt);
+                }
+                let swapped = self.transliterate_with_overrides(word, &ambiguous_positions, &overrides);
+                if !results.contains(&swapped) {
+                    results.push(swapped);
+                }
             }
         }
 
         results
     }
 
-    /// Simple pass-through transliteration (no vowel context logic).
-    /// Used as a building block for consonant swap generation.
-    fn rule_based_transliterate_raw(&self, input: &str) -> String {
-        self.rule_based_transliterate(input, VowelMode::DropMiddle)
+    /// Transliterate a full word but override specific ambiguous consonants.
+    /// This preserves full-word context for taa marbuta and vowel handling.
+    fn transliterate_with_overrides(
+        &self,
+        word: &str,
+        ambiguous: &[(usize, &str, &[&str])],
+        overrides: &HashMap<usize, &str>,
+    ) -> String {
+        let chars: Vec<char> = word.chars().collect();
+        let len = chars.len();
+        let mut result = String::new();
+        let mut pos = 0;
+
+        while pos < len {
+            // Check if this position is an overridden ambiguous consonant
+            let override_match = ambiguous.iter().enumerate().find(|(_, (p, _, _))| *p == pos);
+            if let Some((idx, (_, pattern, _))) = override_match {
+                if let Some(alt) = overrides.get(&idx) {
+                    result.push_str(alt);
+                    pos += pattern.len();
+                    continue;
+                }
+            }
+
+            let remaining: String = chars[pos..].iter().collect();
+
+            // Consonant mappings
+            if let Some((pattern, arabic)) = Self::match_consonant(&remaining) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                continue;
+            }
+
+            // Long vowel mappings
+            if let Some((pattern, arabic)) = Self::match_long_vowel(&remaining) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                continue;
+            }
+
+            // Short vowels — same context-aware logic as rule_based_transliterate
+            if is_vowel_char(chars[pos]) {
+                let at_start = pos == 0;
+                let at_end = pos == len - 1;
+                let is_taa_marbuta = at_end
+                    && (chars[pos] == 'a' || chars[pos] == 'e')
+                    && pos > 0
+                    && !is_vowel_char(chars[pos - 1]);
+
+                if at_start {
+                    Self::push_initial_vowel(&mut result, chars[pos]);
+                } else if is_taa_marbuta {
+                    result.push_str("ة");
+                }
+                // Use DropMiddle-like behavior: drop middle vowels
+                pos += 1;
+                continue;
+            }
+
+            result.push(chars[pos]);
+            pos += 1;
+        }
+
+        result
     }
 
     /// Context-aware rule-based transliteration with configurable vowel handling.

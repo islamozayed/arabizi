@@ -346,15 +346,11 @@
         return;
       }
 
-      // Backspace when input is empty = un-commit the last word
+      // Backspace when input is empty = edit the last committed word (keep it highlighted)
       if (e.key === 'Backspace' && inputEl.value === '' && committedWords.length > 0 && editingWordIdx < 0) {
         e.preventDefault();
-        const last = committedWords.pop();
-        inputEl.value = last.input;
-        currentInput = last.input;
-        currentCandidates = last.candidates;
-        selectedIdx = 0;
-        renderAll();
+        const lastIdx = committedWords.length - 1;
+        editWord(lastIdx);
         return;
       }
 
@@ -364,6 +360,9 @@
     // ── Confirm current word ──
     function confirmCurrentWord() {
       const arabic = currentCandidates[selectedIdx] || currentCandidates[0] || currentInput;
+
+      // Record the user's selection so it ranks higher next time
+      invoke('record_selection', { input: currentInput, arabic: arabic });
 
       if (editingWordIdx >= 0) {
         // Replace the word being edited

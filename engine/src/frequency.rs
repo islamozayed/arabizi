@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 /// Arabic word frequency data from OpenSubtitles 2018 corpus (CC-BY-SA-4.0).
-/// Used to rank transliteration candidates — real, common words score higher.
-const FREQUENCY_DATA: &str = include_str!("../data/ar_50k.txt");
+/// 300k most frequent words — used to rank transliteration candidates.
+const FREQUENCY_DATA: &str = include_str!("../data/ar_300k.txt");
 
 pub struct FrequencyList {
     /// Maps Arabic word → frequency rank (0 = most common)
@@ -34,7 +34,7 @@ mod tests {
     #[test]
     fn frequency_list_loads() {
         let fl = FrequencyList::load();
-        assert!(fl.ranks.len() > 40000, "Expected 40k+ entries, got {}", fl.ranks.len());
+        assert!(fl.ranks.len() > 250000, "Expected 250k+ entries, got {}", fl.ranks.len());
     }
 
     #[test]

@@ -189,7 +189,7 @@ impl TransliterationEngine {
             }
         }
 
-        // Frequency list: up to 50k points (real words beat gibberish)
+        // Frequency list: up to 300k points (real words beat gibberish)
         // Words with individual Arabic tokens all in the frequency list score well.
         // For single-word candidates, check directly.
         // Score inversely proportional to rank (rank 0 = most common = highest score).
@@ -199,7 +199,7 @@ impl TransliterationEngine {
         for w in &words {
             if let Some(rank) = self.frequency.rank(w) {
                 // Inverse rank: lower rank = higher score
-                freq_score += 50_000u64.saturating_sub(rank as u64);
+                freq_score += 300_000u64.saturating_sub(rank as u64);
             } else {
                 all_found = false;
             }
@@ -339,6 +339,13 @@ impl TransliterationEngine {
                 }
             }
 
+            // Context-aware hamza placement for '2'
+            if chars[pos] == '2' {
+                result.push_str(Self::resolve_hamza(&chars, pos));
+                pos += 1;
+                continue;
+            }
+
             let remaining: String = chars[pos..].iter().collect();
 
             // Consonant mappings
@@ -389,6 +396,13 @@ impl TransliterationEngine {
         let mut pos = 0;
 
         while pos < len {
+            // 0. Context-aware hamza placement for '2'
+            if chars[pos] == '2' {
+                result.push_str(Self::resolve_hamza(&chars, pos));
+                pos += 1;
+                continue;
+            }
+
             let remaining: String = chars[pos..].iter().collect();
 
             // 1. Consonant mappings
@@ -459,6 +473,55 @@ impl TransliterationEngine {
         }
 
         result
+    }
+
+    /// Resolve hamza (2) to the appropriate Arabic form based on surrounding vowel context.
+    /// Arabic hamza sits on different "seats" depending on the strongest adjacent vowel:
+    /// - kasra (i/e) → ئ (on ya) — strongest
+    /// - damma (u/o) → ؤ (on waw)
+    /// - fatha (a) or no vowel → أ (on alef) — default for mid-word
+    /// - word-final after consonant → ء (standalone)
+    fn resolve_hamza(chars: &[char], pos: usize) -> &'static str {
+        let len = chars.len();
+        let at_start = pos == 0;
+        let at_end = pos == len - 1;
+
+        if at_start {
+            return match chars.get(pos + 1) {
+                Some(&'i') | Some(&'e') => "إ",
+                _ => "أ",
+            };
+        }
+
+        if at_end {
+            return "ء";
+        }
+
+        // Mid-word: strongest adjacent vowel determines the seat
+        let prev_strength = chars.get(pos.wrapping_sub(1)).and_then(|&c| Self::vowel_strength(c));
+        let next_strength = chars.get(pos + 1).and_then(|&c| Self::vowel_strength(c));
+
+        let strength = match (prev_strength, next_strength) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+
+        match strength {
+            Some(3) => "ئ",  // kasra → hamza on ya
+            Some(2) => "ؤ",  // damma → hamza on waw
+            _ => "أ",        // fatha, no vowel → hamza on alef (most common)
+        }
+    }
+
+    fn vowel_strength(c: char) -> Option<u8> {
+        match c {
+            'i' | 'e' => Some(3),
+            'u' | 'o' => Some(2),
+            'a' => Some(1),
+            _ => None,
+        }
     }
 
     fn push_initial_vowel(result: &mut String, c: char) {
@@ -653,5 +716,50 @@ mod tests {
         let results = e.transliterate_word("aa");
         assert!(!results.iter().any(|r| r.contains("ة")),
             "Should not have ة for 'aa', got {:?}", results);
+    }
+
+    #[test]
+    fn hamza_mid_word_on_alef() {
+        let e = engine();
+        // "bd2t" → بدأت (hamza on alef, no adjacent vowels → default alef)
+        let results = e.transliterate_word("bd2t");
+        assert!(results.iter().any(|r| r.contains("أ")),
+            "Expected أ (hamza on alef) for 'bd2t', got {:?}", results);
+    }
+
+    #[test]
+    fn hamza_with_damma_on_waw() {
+        let e = engine();
+        // "su2al" → سؤال (hamza on waw because of adjacent u)
+        let results = e.transliterate_word("su2al");
+        assert!(results.iter().any(|r| r.contains("ؤ")),
+            "Expected ؤ (hamza on waw) for 'su2al', got {:?}", results);
+    }
+
+    #[test]
+    fn hamza_with_kasra_on_ya() {
+        let e = engine();
+        // "ra2is" → رئيس (hamza on ya because of adjacent i)
+        let results = e.transliterate_word("ra2is");
+        assert!(results.iter().any(|r| r.contains("ئ")),
+            "Expected ئ (hamza on ya) for 'ra2is', got {:?}", results);
+    }
+
+    #[test]
+    fn hamza_word_final_standalone() {
+        let e = engine();
+        // "masa2" → مساء (standalone hamza at end)
+        let results = e.transliterate_word("masa2");
+        assert!(results.iter().any(|r| r.contains("ء")),
+            "Expected ء (standalone hamza) for 'masa2', got {:?}", results);
+    }
+
+    #[test]
+    fn hamza_word_initial() {
+        let e = engine();
+        // "2amal" → أمل (hamza on alef at start)
+        let results = e.transliterate_word("2amal");
+        assert!(results.iter().any(|r| r.starts_with("أ")),
+            "Expected أ (hamza on alef) at start for '2amal', got {:?}", results);
     }
 }

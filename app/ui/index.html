@@ -177,11 +177,34 @@
 
     .empty-state {
       display: flex; flex-direction: column; align-items: center;
-      justify-content: center; padding: 32px 16px; gap: 8px;
+      justify-content: center; padding: 16px 16px 12px; gap: 10px;
     }
-    .empty-state-icon { font-size: 28px; opacity: 0.35; }
     .empty-state-text {
       color: var(--text-tertiary); font-size: 12px; text-align: center; line-height: 1.6;
+    }
+    .mapping-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 4px 8px; width: 100%; max-width: 320px;
+    }
+    .mapping-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 10px; border-radius: 5px;
+      background: rgba(255,255,255,0.03);
+    }
+    .mapping-key {
+      font-size: 13px; font-family: var(--font); font-weight: 600;
+      color: var(--text-accent); min-width: 22px;
+    }
+    .mapping-arrow {
+      font-size: 10px; color: var(--text-tertiary); margin: 0 6px;
+    }
+    .mapping-val {
+      font-size: 17px; font-family: var(--font-ar); color: var(--text-primary);
+    }
+    .mapping-section-label {
+      font-size: 10px; font-weight: 600; color: var(--text-tertiary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-top: 4px; width: 100%; max-width: 320px;
     }
 
     .candidates::-webkit-scrollbar { width: 4px; }
@@ -193,7 +216,7 @@
   <div class="flyout">
     <div class="titlebar" data-tauri-drag-region>
       <span class="titlebar-label">Arabizi</span>
-      <span class="titlebar-hint"><kbd>↑↓</kbd> navigate · <kbd>Space</kbd> confirm word · <kbd>Enter</kbd> paste</span>
+      <span class="titlebar-hint"><kbd>↑↓</kbd> navigate · <kbd>Space</kbd> confirm · <kbd>Tab</kbd> skip · <kbd>Enter</kbd> paste</span>
     </div>
 
     <div class="input-area">
@@ -205,11 +228,28 @@
     <div class="committed-line" id="committed-line"></div>
     <div class="current-word-label" id="current-label"></div>
     <div class="candidates" id="candidates">
-      <div class="empty-state">
-        <div class="empty-state-icon">ع</div>
+      <div class="empty-state" id="empty-landing">
         <div class="empty-state-text">
-          Type Arabizi and use <strong>↑↓</strong> to pick the right spelling<br>
-          <strong>Space</strong> confirms the word · <strong>Enter</strong> pastes all
+          Type Arabizi and use <strong>↑↓</strong> to pick · <strong>Space</strong> confirms · <strong>Enter</strong> pastes
+        </div>
+        <div class="mapping-section-label">Number mappings</div>
+        <div class="mapping-grid">
+          <div class="mapping-item"><span class="mapping-key">2</span><span class="mapping-arrow">→</span><span class="mapping-val">ء</span></div>
+          <div class="mapping-item"><span class="mapping-key">3</span><span class="mapping-arrow">→</span><span class="mapping-val">ع</span></div>
+          <div class="mapping-item"><span class="mapping-key">5</span><span class="mapping-arrow">→</span><span class="mapping-val">خ</span></div>
+          <div class="mapping-item"><span class="mapping-key">6</span><span class="mapping-arrow">→</span><span class="mapping-val">ط</span></div>
+          <div class="mapping-item"><span class="mapping-key">7</span><span class="mapping-arrow">→</span><span class="mapping-val">ح</span></div>
+          <div class="mapping-item"><span class="mapping-key">8</span><span class="mapping-arrow">→</span><span class="mapping-val">ق</span></div>
+          <div class="mapping-item"><span class="mapping-key">9</span><span class="mapping-arrow">→</span><span class="mapping-val">ص</span></div>
+        </div>
+        <div class="mapping-section-label">Letter combos</div>
+        <div class="mapping-grid">
+          <div class="mapping-item"><span class="mapping-key">sh</span><span class="mapping-arrow">→</span><span class="mapping-val">ش</span></div>
+          <div class="mapping-item"><span class="mapping-key">kh</span><span class="mapping-arrow">→</span><span class="mapping-val">خ</span></div>
+          <div class="mapping-item"><span class="mapping-key">gh</span><span class="mapping-arrow">→</span><span class="mapping-val">غ</span></div>
+          <div class="mapping-item"><span class="mapping-key">th</span><span class="mapping-arrow">→</span><span class="mapping-val">ث</span></div>
+          <div class="mapping-item"><span class="mapping-key">dh</span><span class="mapping-arrow">→</span><span class="mapping-val">ذ</span></div>
+          <div class="mapping-item"><span class="mapping-key">3'</span><span class="mapping-arrow">→</span><span class="mapping-val">غ</span></div>
         </div>
       </div>
     </div>
@@ -224,6 +264,7 @@
     const committedEl = document.getElementById('committed-line');
     const labelEl = document.getElementById('current-label');
     const candsEl = document.getElementById('candidates');
+    const landingHTML = document.getElementById('empty-landing').outerHTML;
 
     // State
     let committedWords = [];   // [{ input, arabic, candidates }]
@@ -331,6 +372,35 @@
       if (e.key === ' ' && currentCandidates.length > 0 && currentInput) {
         e.preventDefault();
         confirmCurrentWord();
+        return;
+      }
+
+      // Tab = skip transliteration, keep word as-is (for English words in Arabic text)
+      if (e.key === 'Tab' && currentInput) {
+        e.preventDefault();
+        const raw = currentInput;
+
+        if (editingWordIdx >= 0) {
+          committedWords[editingWordIdx] = {
+            input: raw,
+            arabic: raw,
+            candidates: [raw],
+          };
+          editingWordIdx = -1;
+        } else {
+          committedWords.push({
+            input: raw,
+            arabic: raw,
+            candidates: [raw],
+          });
+        }
+
+        inputEl.value = '';
+        currentInput = '';
+        currentCandidates = [];
+        selectedIdx = 0;
+        renderAll();
+        inputEl.focus();
         return;
       }
 
@@ -451,14 +521,7 @@
     function renderCandidates() {
       if (currentCandidates.length === 0) {
         if (committedWords.length === 0) {
-          candsEl.innerHTML = `
-            <div class="empty-state">
-              <div class="empty-state-icon">ع</div>
-              <div class="empty-state-text">
-                Type Arabizi and use <strong>↑↓</strong> to pick the right spelling<br>
-                <strong>Space</strong> confirms the word · <strong>Enter</strong> pastes all
-              </div>
-            </div>`;
+          candsEl.innerHTML = landingHTML;
         } else {
           candsEl.innerHTML = `
             <div class="empty-state">

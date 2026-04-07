@@ -82,6 +82,37 @@ fn record_selection(state: tauri::State<'_, Mutex<AppState>>, input: String, ara
 }
 
 #[tauri::command]
+fn get_accent_color() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(dwm) = hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\DWM") {
+            if let Ok(color) = dwm.get_value::<u32, _>("AccentColor") {
+                // ABGR format: bits 0-7 = R, 8-15 = G, 16-23 = B
+                let r = color & 0xFF;
+                let g = (color >> 8) & 0xFF;
+                let b = (color >> 16) & 0xFF;
+                return format!("#{:02x}{:02x}{:02x}", r, g, b);
+            }
+        }
+    }
+    "#58A1AC".to_string()
+}
+
+#[tauri::command]
+fn apply_theme(app: tauri::AppHandle, dark: bool) {
+    #[cfg(target_os = "windows")]
+    {
+        use window_vibrancy::apply_mica;
+        if let Some(window) = app.get_webview_window("overlay") {
+            let _ = apply_mica(&window, Some(dark));
+        }
+    }
+}
+
+#[tauri::command]
 fn paste_from_clipboard() {
     thread::spawn(|| {
         thread::sleep(Duration::from_millis(200));
@@ -120,12 +151,12 @@ fn main() {
                 state.prefs_path = prefs_path;
             }
 
-            // Apply Mica/Acrylic blur effect on Windows
+            // Apply Mica with system default — JS will call apply_theme to match user preference
             if let Some(window) = app.get_webview_window("overlay") {
                 #[cfg(target_os = "windows")]
                 {
                     use window_vibrancy::apply_mica;
-                    let _ = apply_mica(&window, Some(true)); // dark mode
+                    let _ = apply_mica(&window, None);
                 }
             }
 
@@ -164,7 +195,7 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard, record_selection])
+        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard, record_selection, apply_theme, get_accent_color])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

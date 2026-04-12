@@ -245,9 +245,18 @@ impl TransliterationEngine {
         let mut ambiguous_positions: Vec<(usize, &str, &[&str])> = Vec::new();
         let mut pos = 0;
         while pos < len {
+            // Skip digraph separator
+            if chars[pos] == '-' {
+                pos += 1;
+                continue;
+            }
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
             let remaining: String = chars[pos..].iter().collect();
             let mut found = false;
             for (pattern, _primary, alternatives) in AMBIGUOUS_CONSONANTS {
+                if has_separator && pattern.len() > 1 {
+                    continue; // separator breaks this digraph
+                }
                 if remaining.starts_with(pattern) {
                     ambiguous_positions.push((pos, pattern, alternatives));
                     pos += pattern.len();
@@ -256,7 +265,8 @@ impl TransliterationEngine {
                 }
             }
             if !found {
-                if let Some((pattern, _)) = Self::match_consonant(&remaining) {
+                let max_len = if has_separator { 1 } else { usize::MAX };
+                if let Some((pattern, _)) = Self::match_consonant_max(&remaining, max_len) {
                     pos += pattern.len();
                 } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
                     pos += pattern.len();
@@ -346,12 +356,24 @@ impl TransliterationEngine {
                 continue;
             }
 
+            // Digraph separator
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
             let remaining: String = chars[pos..].iter().collect();
 
-            // Consonant mappings
-            if let Some((pattern, arabic)) = Self::match_consonant(&remaining) {
+            // Consonant mappings (limited to 1 char if separator follows)
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, arabic)) = Self::match_consonant_max(&remaining, max_len) {
                 result.push_str(arabic);
                 pos += pattern.len();
+                if has_separator && pos < len && chars[pos] == '-' {
+                    pos += 1;
+                }
+                continue;
+            }
+
+            // Skip bare separator
+            if chars[pos] == '-' {
+                pos += 1;
                 continue;
             }
 
@@ -403,12 +425,25 @@ impl TransliterationEngine {
                 continue;
             }
 
+            // Digraph separator: '-' limits the next match to single characters
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
             let remaining: String = chars[pos..].iter().collect();
 
-            // 1. Consonant mappings
-            if let Some((pattern, arabic)) = Self::match_consonant(&remaining) {
+            // 1. Consonant mappings (limited to 1 char if separator follows)
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, arabic)) = Self::match_consonant_max(&remaining, max_len) {
                 result.push_str(arabic);
                 pos += pattern.len();
+                // Skip the separator
+                if has_separator && pos < len && chars[pos] == '-' {
+                    pos += 1;
+                }
+                continue;
+            }
+
+            // Skip bare separator (e.g. between vowels)
+            if chars[pos] == '-' {
+                pos += 1;
                 continue;
             }
 
@@ -533,9 +568,11 @@ impl TransliterationEngine {
         }
     }
 
-    fn match_consonant(input: &str) -> Option<(&'static str, &'static str)> {
+    /// Match a consonant pattern, with optional max length limit.
+    /// When `max_len` is 1, digraphs/trigraphs are skipped — used for separator-broken digraphs.
+    fn match_consonant_max(input: &str, max_len: usize) -> Option<(&'static str, &'static str)> {
         for (pattern, arabic) in CONSONANT_MAPPINGS {
-            if input.starts_with(pattern) {
+            if pattern.len() <= max_len && input.starts_with(pattern) {
                 return Some((pattern, arabic));
             }
         }

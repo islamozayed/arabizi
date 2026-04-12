@@ -491,8 +491,8 @@
   </style>
 </head>
 <body>
+  <div class="toast" id="toast"></div>
   <div class="flyout">
-    <div class="toast" id="toast"></div>
 
     <!-- Header / Input bar -->
     <div class="header" data-tauri-drag-region>
@@ -742,7 +742,7 @@
 
     // ── Backspace counter for Ctrl+Backspace hint ──
     let backspaceCount = 0;
-    let backspaceHintShown = localStorage.getItem('arabizi-ctrlbs-hint') === 'true';
+    let backspaceHintShown = localStorage.getItem('arabizi-ctrlbs-hint-v2') === 'true';
 
     // ── Show/reset ──
     getCurrentWindow().listen('focus-input', () => {
@@ -893,11 +893,29 @@
         return;
       }
 
-      // Backspace on empty input = edit previous word
-      if (e.key === 'Backspace' && inputEl.value === '' && committedWords.length > 0 && editingWordIdx < 0) {
-        e.preventDefault();
-        editWord(committedWords.length - 1);
-        return;
+      // Backspace on empty input = edit previous word (or delete current editing word and move back)
+      if ((e.key === 'Backspace' || e.code === 'Backspace') && !e.ctrlKey && inputEl.value === '' && committedWords.length > 0) {
+        if (editingWordIdx >= 0) {
+          // Currently editing a word but cleared its text — delete it and edit the previous one
+          e.preventDefault();
+          committedWords.splice(editingWordIdx, 1);
+          editingWordIdx = -1;
+          currentInput = '';
+          currentCandidates = [];
+          selectedIdx = 0;
+          if (committedWords.length > 0) {
+            editWord(committedWords.length - 1);
+          } else {
+            updateInputHint();
+            renderAll();
+            inputEl.focus();
+          }
+          return;
+        } else {
+          e.preventDefault();
+          editWord(committedWords.length - 1);
+          return;
+        }
       }
 
       // Track consecutive backspaces to hint about Ctrl+Backspace
@@ -905,7 +923,7 @@
         backspaceCount++;
         if (backspaceCount >= 3 && !backspaceHintShown) {
           backspaceHintShown = true;
-          localStorage.setItem('arabizi-ctrlbs-hint', 'true');
+          localStorage.setItem('arabizi-ctrlbs-hint-v2', 'true');
           showToast('Tip: <kbd>Ctrl</kbd>+<kbd>⌫</kbd> deletes the entire word');
         }
       } else if (e.key !== 'Backspace') {
@@ -923,6 +941,7 @@
       } else {
         committedWords.push({ input: currentInput, arabic, candidates: currentCandidates });
       }
+      clearTimeout(debounce);
       inputEl.value = '';
       currentInput = '';
       currentCandidates = [];
@@ -933,6 +952,7 @@
     }
 
     window.editWord = function(idx) {
+      clearTimeout(debounce);
       editingWordIdx = idx;
       const w = committedWords[idx];
       inputEl.value = w.input;

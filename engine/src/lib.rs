@@ -1,5 +1,6 @@
 mod mappings;
 mod dictionary;
+mod emoji;
 mod engine;
 mod frequency;
 mod user_prefs;

@@ -27,6 +27,7 @@ struct AppState {
 struct WordResult {
     input: String,
     candidates: Vec<String>,
+    emojis: Vec<String>,
     selected: usize,
 }
 
@@ -53,9 +54,11 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
         .iter()
         .map(|w| {
             let candidates = state.engine.transliterate_word_ranked(w, Some(&state.prefs));
+            let emojis = state.engine.lookup_emojis(&candidates);
             WordResult {
                 input: w.to_string(),
                 candidates,
+                emojis,
                 selected: 0,
             }
         })

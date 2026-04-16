@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::dictionary::build_dictionary;
+use crate::emoji::build_emoji_map;
 use crate::frequency::FrequencyList;
 use crate::mappings::{
     is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS, SHORT_VOWELS,
@@ -23,6 +24,7 @@ use crate::user_prefs::UserPreferences;
 /// 3. Arabic word frequency (common real words rank higher)
 pub struct TransliterationEngine {
     dictionary: HashMap<String, Vec<String>>,
+    emoji_map: HashMap<String, Vec<&'static str>>,
     frequency: FrequencyList,
 }
 
@@ -30,8 +32,20 @@ impl TransliterationEngine {
     pub fn new() -> Self {
         Self {
             dictionary: build_dictionary(),
+            emoji_map: build_emoji_map(),
             frequency: FrequencyList::load(),
         }
+    }
+
+    /// Look up emojis by checking Arabic candidates against the emoji map.
+    /// Tries each candidate in order (best first) and returns the first match.
+    pub fn lookup_emojis(&self, candidates: &[String]) -> Vec<String> {
+        for candidate in candidates {
+            if let Some(emojis) = self.emoji_map.get(candidate) {
+                return emojis.iter().map(|e| e.to_string()).collect();
+            }
+        }
+        Vec::new()
     }
 
     /// Transliterate a full input string (may contain multiple words).

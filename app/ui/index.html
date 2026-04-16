@@ -270,6 +270,31 @@
       width: 100%;
     }
 
+    .emoji-row {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+
+    .emoji-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 18px;
+      transition: background 0.06s;
+    }
+
+    .emoji-item:hover { background: var(--item-hover); }
+
+    .emoji-item.selected {
+      background: var(--accent);
+      outline: 1px solid var(--hint-example-outline);
+    }
+
     .preview-panel {
       flex: 1;
       gap: 10px;
@@ -630,8 +655,11 @@
     // ── State ──
     let committedWords = [];
     let currentCandidates = [];
+    let currentEmojis = [];
     let currentInput = '';
     let selectedIdx = 0;
+    let emojiMode = false;
+    let selectedEmojiIdx = 0;
     let editingWordIdx = -1;
     let settingsOpen = false;
 
@@ -719,13 +747,17 @@
             input: w.input,
             arabic: w.candidates[0] || '',
             candidates: w.candidates,
+            emojis: w.emojis || [],
           });
         }
         const lastWord = result.words[result.words.length - 1];
         currentCandidates = lastWord.candidates;
+        currentEmojis = lastWord.emojis || [];
         currentInput = lastWord.input;
       }
       selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
       renderAll();
       inputEl.focus();
     });
@@ -748,8 +780,11 @@
     getCurrentWindow().listen('focus-input', () => {
       committedWords = [];
       currentCandidates = [];
+      currentEmojis = [];
       currentInput = '';
       selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
       editingWordIdx = -1;
       settingsOpen = false;
       inputEl.value = '';
@@ -768,7 +803,10 @@
 
         if (!currentInput) {
           currentCandidates = [];
+          currentEmojis = [];
           selectedIdx = 0;
+          emojiMode = false;
+          selectedEmojiIdx = 0;
           renderAll();
           return;
         }
@@ -787,11 +825,15 @@
           }
           const lastWord = result.words[result.words.length - 1];
           currentCandidates = lastWord.candidates;
+          currentEmojis = lastWord.emojis || [];
           currentInput = lastWord.input;
         } else {
           currentCandidates = [];
+          currentEmojis = [];
         }
         selectedIdx = 0;
+        emojiMode = false;
+        selectedEmojiIdx = 0;
         renderAll();
       }, 30);
     });
@@ -819,8 +861,15 @@
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (currentCandidates.length > 0) {
-          selectedIdx = Math.min(selectedIdx + 1, currentCandidates.length - 1);
+        if (emojiMode) {
+          // Already in emoji mode — no more rows to go down to
+        } else if (currentCandidates.length > 0) {
+          if (selectedIdx < currentCandidates.length - 1) {
+            selectedIdx++;
+          } else if (currentEmojis.length > 0) {
+            emojiMode = true;
+            selectedEmojiIdx = 0;
+          }
           renderSuggestions();
           renderPreview();
         }
@@ -829,7 +878,12 @@
 
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (currentCandidates.length > 0) {
+        if (emojiMode) {
+          emojiMode = false;
+          selectedIdx = currentCandidates.length - 1;
+          renderSuggestions();
+          renderPreview();
+        } else if (currentCandidates.length > 0) {
           selectedIdx = Math.max(selectedIdx - 1, 0);
           renderSuggestions();
           renderPreview();
@@ -837,7 +891,21 @@
         return;
       }
 
-      if (e.key === ' ' && currentCandidates.length > 0 && currentInput) {
+      if (e.key === 'ArrowLeft' && emojiMode) {
+        e.preventDefault();
+        selectedEmojiIdx = Math.max(selectedEmojiIdx - 1, 0);
+        renderSuggestions();
+        return;
+      }
+
+      if (e.key === 'ArrowRight' && emojiMode) {
+        e.preventDefault();
+        selectedEmojiIdx = Math.min(selectedEmojiIdx + 1, currentEmojis.length - 1);
+        renderSuggestions();
+        return;
+      }
+
+      if (e.key === ' ' && (currentCandidates.length > 0 || emojiMode) && currentInput) {
         e.preventDefault();
         confirmCurrentWord();
         return;
@@ -847,15 +915,18 @@
         e.preventDefault();
         const raw = currentInput;
         if (editingWordIdx >= 0) {
-          committedWords[editingWordIdx] = { input: raw, arabic: raw, candidates: [raw] };
+          committedWords[editingWordIdx] = { input: raw, arabic: raw, candidates: [raw], emojis: [] };
           editingWordIdx = -1;
         } else {
-          committedWords.push({ input: raw, arabic: raw, candidates: [raw] });
+          committedWords.push({ input: raw, arabic: raw, candidates: [raw], emojis: [] });
         }
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
+        currentEmojis = [];
         selectedIdx = 0;
+        emojiMode = false;
+        selectedEmojiIdx = 0;
         updateInputHint();
         renderAll();
         inputEl.focus();
@@ -885,7 +956,10 @@
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
+        currentEmojis = [];
         selectedIdx = 0;
+        emojiMode = false;
+        selectedEmojiIdx = 0;
         backspaceCount = 0;
         updateInputHint();
         renderAll();
@@ -902,7 +976,10 @@
           editingWordIdx = -1;
           currentInput = '';
           currentCandidates = [];
+          currentEmojis = [];
           selectedIdx = 0;
+          emojiMode = false;
+          selectedEmojiIdx = 0;
           if (committedWords.length > 0) {
             editWord(committedWords.length - 1);
           } else {
@@ -933,19 +1010,27 @@
 
     // ── Core logic ──
     function confirmCurrentWord() {
-      const arabic = currentCandidates[selectedIdx] || currentCandidates[0] || currentInput;
+      let arabic;
+      if (emojiMode && currentEmojis.length > 0) {
+        arabic = currentEmojis[selectedEmojiIdx] || currentEmojis[0];
+      } else {
+        arabic = currentCandidates[selectedIdx] || currentCandidates[0] || currentInput;
+      }
       invoke('record_selection', { input: currentInput, arabic });
       if (editingWordIdx >= 0) {
-        committedWords[editingWordIdx] = { input: currentInput, arabic, candidates: currentCandidates };
+        committedWords[editingWordIdx] = { input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis };
         editingWordIdx = -1;
       } else {
-        committedWords.push({ input: currentInput, arabic, candidates: currentCandidates });
+        committedWords.push({ input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis });
       }
       clearTimeout(debounce);
       inputEl.value = '';
       currentInput = '';
       currentCandidates = [];
+      currentEmojis = [];
       selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
       updateInputHint();
       renderAll();
       inputEl.focus();
@@ -958,8 +1043,11 @@
       inputEl.value = w.input;
       currentInput = w.input;
       currentCandidates = w.candidates;
+      currentEmojis = w.emojis || [];
       selectedIdx = w.candidates.indexOf(w.arabic);
       if (selectedIdx < 0) selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
       updateInputHint();
       renderAll();
       inputEl.focus();
@@ -1015,31 +1103,56 @@
     }
 
     function renderSuggestions() {
-      if (currentCandidates.length === 0) {
+      if (currentCandidates.length === 0 && currentEmojis.length === 0) {
         suggestionList.innerHTML = '';
         return;
       }
-      suggestionList.innerHTML = currentCandidates.map((c, i) => `
-        <div class="suggestion ${i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})">
+      const emojiHtml = currentEmojis.length > 0
+        ? `<div class="emoji-row">${currentEmojis.map((e, i) => `
+            <div class="emoji-item ${emojiMode && i === selectedEmojiIdx ? 'selected' : ''}" onclick="pickEmoji(${i})">${e}</div>
+          `).join('')}</div>`
+        : '';
+
+      // Insert emoji row after the first 2 Arabic suggestions
+      let html = '';
+      currentCandidates.forEach((c, i) => {
+        html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})">
           <div class="ar">${c}</div>
-        </div>
-      `).join('');
-      const sel = suggestionList.querySelector('.suggestion.selected');
+        </div>`;
+        if (i === 1) html += emojiHtml;
+      });
+      // If fewer than 2 candidates, append emoji row at the end
+      if (currentCandidates.length <= 2 && emojiHtml) {
+        if (currentCandidates.length < 2) html += emojiHtml;
+      }
+
+      suggestionList.innerHTML = html;
+      const sel = suggestionList.querySelector('.suggestion.selected, .emoji-item.selected');
       if (sel) sel.scrollIntoView({ block: 'nearest' });
     }
+
+    window.pickEmoji = function(idx) {
+      emojiMode = true;
+      selectedEmojiIdx = idx;
+      confirmCurrentWord();
+    };
 
     function renderPreview() {
       const parts = [];
       for (let i = 0; i < committedWords.length; i++) {
         if (i === editingWordIdx && currentCandidates.length > 0) {
-          const current = currentCandidates[selectedIdx] || currentCandidates[0];
+          const current = emojiMode && currentEmojis.length > 0
+            ? (currentEmojis[selectedEmojiIdx] || currentEmojis[0])
+            : (currentCandidates[selectedIdx] || currentCandidates[0]);
           parts.push(`<span class="committed-word editing" onclick="editWord(${i})">${current}</span>`);
         } else {
           parts.push(`<span class="committed-word" onclick="editWord(${i})">${committedWords[i].arabic}</span>`);
         }
       }
-      if (editingWordIdx < 0 && currentCandidates.length > 0) {
-        const current = currentCandidates[selectedIdx] || currentCandidates[0];
+      if (editingWordIdx < 0 && (currentCandidates.length > 0 || emojiMode)) {
+        const current = emojiMode && currentEmojis.length > 0
+          ? (currentEmojis[selectedEmojiIdx] || currentEmojis[0])
+          : (currentCandidates[selectedIdx] || currentCandidates[0]);
         parts.push(`<span>${current}</span>`);
       }
       previewText.innerHTML = parts.join(' ');

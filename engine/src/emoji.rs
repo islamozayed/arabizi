@@ -1,5 +1,82 @@
 use std::collections::HashMap;
 
+/// Text emoticon → emoji mapping.
+/// Keys are already lowercased (callers must lowercase before lookup).
+pub fn build_emoticon_map() -> HashMap<&'static str, Vec<&'static str>> {
+    let entries: &[(&str, &[&str])] = &[
+        // Happy / smiling
+        (":)",  &["😊", "🙂"]),
+        ("=)",  &["😊", "🙂"]),
+        (":d",  &["😄", "😁"]),
+        ("=d",  &["😄", "😁"]),
+        (":dd", &["😂", "🤣"]),
+
+        // Laughing
+        ("xd",  &["😂", "🤣"]),
+        ("lol", &["😂", "🤣"]),
+        ("lmao",&["🤣", "😂"]),
+
+        // Sad
+        (":(", &["😢", "😞"]),
+        ("=(", &["😢", "😞"]),
+        (":'(", &["😭", "😢"]),
+
+        // Tongue / playful
+        (":p",  &["😛", "😜"]),
+        ("=p",  &["😛", "😜"]),
+        (":b",  &["😛"]),
+
+        // Winking
+        (";)",  &["😉"]),
+        (";d",  &["😄", "😉"]),
+
+        // Love
+        ("<3",  &["❤️", "🥰", "💕"]),
+        ("</3", &["💔"]),
+        (":*",  &["😘", "💋"]),
+
+        // Surprised
+        (":o",  &["😮", "😲"]),
+        ("=o",  &["😮", "😲"]),
+        (":0",  &["😮", "😲"]),
+
+        // Angry / evil
+        (">:(", &["😠", "😤"]),
+        (">:)", &["😈", "😏"]),
+
+        // Neutral / confused
+        (":|",  &["😐", "😑"]),
+        (":/",  &["😕", "🤔"]),
+        (":s",  &["😖", "😬"]),
+        (":z",  &["😴", "💤"]),
+
+        // Angel
+        ("o:)", &["😇"]),
+
+        // Cool
+        ("b)",  &["😎"]),
+        ("8)",  &["😎"]),
+
+        // Nervous / sweat
+        (":>",  &["😅"]),
+        ("^^",  &["😊", "🙂"]),
+        ("^_^", &["😊"]),
+        ("-_-", &["😑", "😒"]),
+        ("o_o", &["😳", "😮"]),
+        ("o.o", &["😳"]),
+        (">_<", &["😣", "😤"]),
+        ("uwu", &["🥺", "😊"]),
+        ("owo", &["😲", "🥺"]),
+        (":3",  &["😸", "🐱"]),
+    ];
+
+    let mut map = HashMap::new();
+    for (k, v) in entries {
+        map.insert(*k, v.to_vec());
+    }
+    map
+}
+
 /// A curated mapping of Arabic words/phrases to related emojis.
 /// Keyed by the Arabic output so that any Arabizi spelling that produces
 /// the same Arabic candidate will surface the same emojis.

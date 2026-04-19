@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
+use crate::cldr_ar::CLDR_AR;
 use crate::dictionary::build_dictionary;
-use crate::emoji::build_emoji_map;
+use crate::emoji::{build_emoji_map, build_emoticon_map};
 use crate::frequency::FrequencyList;
 use crate::mappings::{
     is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS, SHORT_VOWELS,
@@ -25,6 +26,8 @@ use crate::user_prefs::UserPreferences;
 pub struct TransliterationEngine {
     dictionary: HashMap<String, Vec<String>>,
     emoji_map: HashMap<String, Vec<&'static str>>,
+    emoticon_map: HashMap<&'static str, Vec<&'static str>>,
+    cldr_index: HashMap<String, Vec<&'static str>>,
     frequency: FrequencyList,
 }
 
@@ -33,19 +36,61 @@ impl TransliterationEngine {
         Self {
             dictionary: build_dictionary(),
             emoji_map: build_emoji_map(),
+            emoticon_map: build_emoticon_map(),
+            cldr_index: Self::build_cldr_index(),
             frequency: FrequencyList::load(),
         }
     }
 
-    /// Look up emojis by checking Arabic candidates against the emoji map.
-    /// Tries each candidate in order (best first) and returns the first match.
+    fn build_cldr_index() -> HashMap<String, Vec<&'static str>> {
+        let mut index: HashMap<String, Vec<&'static str>> = HashMap::new();
+        for (emoji, keywords) in CLDR_AR {
+            for kw in *keywords {
+                index.entry(kw.to_string()).or_default().push(emoji);
+            }
+        }
+        index
+    }
+
+    /// Look up emojis for Arabic candidates.
+    ///
+    /// Priority:
+    /// 1. Handwritten map — curated, exact matches (highest quality)
+    /// 2. CLDR reverse index — broad coverage from Unicode keyword data
+    ///
+    /// Returns up to 3 emojis, deduplicated.
     pub fn lookup_emojis(&self, candidates: &[String]) -> Vec<String> {
+        // 1. Handwritten map wins if any candidate matches
         for candidate in candidates {
             if let Some(emojis) = self.emoji_map.get(candidate) {
                 return emojis.iter().map(|e| e.to_string()).collect();
             }
         }
-        Vec::new()
+
+        // 2. CLDR reverse index — collect from best candidates first
+        let mut results: Vec<String> = Vec::new();
+        'outer: for candidate in candidates.iter().take(3) {
+            if let Some(emojis) = self.cldr_index.get(candidate.as_str()) {
+                for &emoji in emojis {
+                    let s = emoji.to_string();
+                    if !results.contains(&s) {
+                        results.push(s);
+                    }
+                    if results.len() >= 3 {
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        results
+    }
+
+    /// Check if input is a text emoticon. Input must already be lowercased.
+    /// Returns emoji candidates if matched, or None to fall through to normal transliteration.
+    pub fn lookup_emoticon(&self, input: &str) -> Option<Vec<String>> {
+        self.emoticon_map
+            .get(input)
+            .map(|emojis| emojis.iter().map(|e| e.to_string()).collect())
     }
 
     /// Transliterate a full input string (may contain multiple words).
@@ -137,6 +182,14 @@ impl TransliterationEngine {
         for t in tanween {
             if !candidates.contains(&t) {
                 candidates.push(t);
+            }
+        }
+
+        // 5b. Alef layyina variants — word-final ا could be ى (e.g. تعالا → تعالى)
+        let alef_layyina = Self::generate_alef_layyina_variants(&candidates);
+        for v in alef_layyina {
+            if !candidates.contains(&v) {
+                candidates.push(v);
             }
         }
 
@@ -238,6 +291,23 @@ impl TransliterationEngine {
                 // Cases where vowel was dropped: e.g. سهلن → سهلاً
                 let base = &candidate[..candidate.len() - "ن".len()];
                 variants.push(format!("{}اً", base));
+            }
+        }
+        variants
+    }
+
+    /// Generate alef layyina (ى) variants for candidates ending in ا.
+    /// In Arabic, many words use ى (alef layyina) at word end instead of ا —
+    /// e.g. تعالى, إلى, على, هدى. Since both sound identical in Arabizi,
+    /// this generates the ى form as an alternative ranked by the frequency list.
+    fn generate_alef_layyina_variants(candidates: &[String]) -> Vec<String> {
+        let alef = 'ا';
+        let alef_len = alef.len_utf8();
+        let mut variants = Vec::new();
+        for candidate in candidates {
+            if candidate.ends_with(alef) && candidate.chars().count() > 1 {
+                let base = &candidate[..candidate.len() - alef_len];
+                variants.push(format!("{}ى", base));
             }
         }
         variants
@@ -740,6 +810,81 @@ mod tests {
         let first = &results[0];
         assert!(first.starts_with("ا") || first.starts_with("أ"),
             "Expected word-initial alef in '{}'", first);
+    }
+
+    #[test]
+    fn cldr_lookup_laugh() {
+        let e = engine();
+        // ضحك (laugh) should now surface laugh emojis via CLDR
+        let emojis = e.lookup_emojis(&["ضحك".to_string()]);
+        assert!(!emojis.is_empty(), "Expected emojis for ضحك, got none");
+        assert!(emojis.len() <= 3, "Should return at most 3 emojis");
+    }
+
+    #[test]
+    fn cldr_lookup_egg() {
+        let e = engine();
+        // بيض (eggs) should surface an egg emoji
+        let emojis = e.lookup_emojis(&["بيض".to_string()]);
+        assert!(!emojis.is_empty(), "Expected emojis for بيض, got none");
+    }
+
+    #[test]
+    fn cldr_lookup_plant() {
+        let e = engine();
+        // نبات (plant) should surface a plant emoji
+        let emojis = e.lookup_emojis(&["نبات".to_string()]);
+        assert!(!emojis.is_empty(), "Expected emojis for نبات, got none");
+    }
+
+    #[test]
+    fn emoticon_smiley() {
+        let e = engine();
+        let r = e.lookup_emoticon(":)").unwrap();
+        assert!(r.iter().any(|s| s.contains("😊") || s.contains("🙂")),
+            "Expected smiley emoji for ':)', got {:?}", r);
+    }
+
+    #[test]
+    fn emoticon_heart() {
+        let e = engine();
+        let r = e.lookup_emoticon("<3").unwrap();
+        assert!(r.iter().any(|s| s.contains("❤") || s.contains("🥰")),
+            "Expected heart emoji for '<3', got {:?}", r);
+    }
+
+    #[test]
+    fn emoticon_xd() {
+        let e = engine();
+        let r = e.lookup_emoticon("xd").unwrap();
+        assert!(r.iter().any(|s| s.contains("😂") || s.contains("🤣")),
+            "Expected laugh emoji for 'xd', got {:?}", r);
+    }
+
+    #[test]
+    fn emoticon_no_match_returns_none() {
+        let e = engine();
+        assert!(e.lookup_emoticon("salam").is_none());
+    }
+
+    #[test]
+    fn alef_layyina_variant_generated() {
+        let e = engine();
+        // "t3aalaa" → primary should be تعالى (not تعالا)
+        let results = e.transliterate("t3aalaa");
+        assert!(results.iter().any(|r| r == "تعالى"),
+            "Expected تعالى in candidates for 't3aalaa', got {:?}", results);
+        assert_eq!(results[0], "تعالى",
+            "Expected تعالى as top candidate for 't3aalaa', got {:?}", results);
+    }
+
+    #[test]
+    fn alef_layyina_variant_for_rule_based() {
+        let e = engine();
+        // Any word ending in ا should also offer ى variant
+        let results = e.transliterate_word("3alaa");
+        assert!(results.iter().any(|r| r.ends_with('ى')),
+            "Expected a ى-ending candidate for '3alaa', got {:?}", results);
     }
 
     #[test]

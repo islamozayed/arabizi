@@ -88,9 +88,7 @@
       gap: 16px;
       padding: 16px 12px;
       height: 60px;
-      background: var(--bg-surface);
       outline: 1px solid var(--outline);
-      backdrop-filter: blur(50px);
       flex-shrink: 0;
       border-radius: var(--radius) var(--radius) 0 0;
     }
@@ -163,9 +161,7 @@
     .panel {
       display: flex;
       flex-direction: column;
-      background: var(--bg-surface);
       outline: 1px solid var(--outline);
-      backdrop-filter: blur(50px);
       padding: 12px;
     }
 
@@ -416,9 +412,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 12px;
-      background: var(--bg-surface);
       outline: 1px solid var(--outline);
-      backdrop-filter: blur(50px);
       flex-shrink: 0;
       border-radius: 0 0 var(--radius) var(--radius);
     }
@@ -475,11 +469,17 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
 
-    /* Blur toggle */
-    [data-blur="false"] .header,
-    [data-blur="false"] .panel,
-    [data-blur="false"] .footer {
-      backdrop-filter: none;
+    /* Surface always gets a dark fill to prevent vibrant backgrounds from bleeding through */
+    .header, .panel, .footer {
+      background: var(--bg-surface);
+    }
+
+    /* Blur toggle — layer backdrop blur on top of the fill */
+    [data-blur="true"] .header,
+    [data-blur="true"] .panel,
+    [data-blur="true"] .footer {
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
     }
 
     /* Toast notification */
@@ -680,7 +680,6 @@
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
       document.documentElement.setAttribute('data-blur', settings.blur);
       invoke('apply_theme', { dark });
-      // Update button states
       themeButtons.querySelectorAll('.theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.val === settings.theme);
       });
@@ -861,14 +860,23 @@
 
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (emojiMode) {
-          // Already in emoji mode — no more rows to go down to
-        } else if (currentCandidates.length > 0) {
-          if (selectedIdx < currentCandidates.length - 1) {
-            selectedIdx++;
-          } else if (currentEmojis.length > 0) {
+        if (currentCandidates.length > 0 || emojiMode) {
+          // Emoji row is rendered after candidate index 1 (or after index 0 if only 1 candidate)
+          const emojiPos = currentEmojis.length > 0
+            ? Math.min(1, currentCandidates.length - 1)
+            : -1;
+          if (emojiMode) {
+            // From emoji row: move to first candidate below it (index emojiPos + 1)
+            if (currentCandidates.length > emojiPos + 1) {
+              emojiMode = false;
+              selectedIdx = emojiPos + 1;
+            }
+          } else if (selectedIdx === emojiPos && currentEmojis.length > 0) {
+            // At the candidate just above the emoji row: enter emoji mode
             emojiMode = true;
             selectedEmojiIdx = 0;
+          } else if (selectedIdx < currentCandidates.length - 1) {
+            selectedIdx++;
           }
           renderSuggestions();
           renderPreview();
@@ -879,12 +887,23 @@
       if (e.key === 'ArrowUp') {
         e.preventDefault();
         if (emojiMode) {
+          // From emoji row: go back to the candidate above it
           emojiMode = false;
-          selectedIdx = currentCandidates.length - 1;
+          // selectedIdx is already at emojiPos, nothing to change
           renderSuggestions();
           renderPreview();
         } else if (currentCandidates.length > 0) {
-          selectedIdx = Math.max(selectedIdx - 1, 0);
+          const emojiPos = currentEmojis.length > 0
+            ? Math.min(1, currentCandidates.length - 1)
+            : -1;
+          if (currentEmojis.length > 0 && selectedIdx === emojiPos + 1) {
+            // At the first candidate below the emoji row: go back into emoji row
+            emojiMode = true;
+            selectedEmojiIdx = 0;
+            selectedIdx = emojiPos;
+          } else if (selectedIdx > 0) {
+            selectedIdx--;
+          }
           renderSuggestions();
           renderPreview();
         }

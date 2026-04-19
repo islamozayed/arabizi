@@ -53,6 +53,15 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
     let words: Vec<WordResult> = parts
         .iter()
         .map(|w| {
+            // Emoticons bypass Arabic transliteration entirely — return emojis as candidates
+            if let Some(emojis) = state.engine.lookup_emoticon(w) {
+                return WordResult {
+                    input: w.to_string(),
+                    candidates: emojis,
+                    emojis: vec![],
+                    selected: 0,
+                };
+            }
             let candidates = state.engine.transliterate_word_ranked(w, Some(&state.prefs));
             let emojis = state.engine.lookup_emojis(&candidates);
             WordResult {
@@ -104,13 +113,16 @@ fn get_accent_color() -> String {
     "#58A1AC".to_string()
 }
 
+
 #[tauri::command]
 fn apply_theme(app: tauri::AppHandle, dark: bool) {
     #[cfg(target_os = "windows")]
     {
-        use window_vibrancy::apply_mica;
+        use window_vibrancy::apply_acrylic;
         if let Some(window) = app.get_webview_window("overlay") {
-            let _ = apply_mica(&window, Some(dark));
+            // #121212 @ 84% for dark, #F5F5F5 @ 84% for light
+            let color = if dark { (20u8, 20u8, 20u8, 238u8) } else { (245u8, 245u8, 245u8, 238u8) };
+            let _ = apply_acrylic(&window, Some(color));
         }
     }
 }
@@ -154,12 +166,12 @@ fn main() {
                 state.prefs_path = prefs_path;
             }
 
-            // Apply Mica with system default — JS will call apply_theme to match user preference
-            if let Some(window) = app.get_webview_window("overlay") {
-                #[cfg(target_os = "windows")]
-                {
-                    use window_vibrancy::apply_mica;
-                    let _ = apply_mica(&window, None);
+            // Apply acrylic backdrop — re-applied on theme change via apply_theme command
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::apply_acrylic;
+                if let Some(window) = app.get_webview_window("overlay") {
+                    let _ = apply_acrylic(&window, Some((20u8, 20u8, 20u8, 238u8)));
                 }
             }
 

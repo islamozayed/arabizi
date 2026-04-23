@@ -127,6 +127,100 @@ fn apply_theme(app: tauri::AppHandle, dark: bool) {
     }
 }
 
+fn parse_shortcut_str(s: &str) -> Result<Shortcut, String> {
+    let mut modifiers = Modifiers::empty();
+    let mut code: Option<Code> = None;
+    for part in s.split('+') {
+        match part.trim().to_lowercase().as_str() {
+            "ctrl" | "control" => modifiers |= Modifiers::CONTROL,
+            "shift" => modifiers |= Modifiers::SHIFT,
+            "alt" => modifiers |= Modifiers::ALT,
+            "meta" | "super" | "win" => modifiers |= Modifiers::SUPER,
+            key => { code = Some(str_to_code(key).ok_or_else(|| format!("Unknown key: {key}"))?); }
+        }
+    }
+    let code = code.ok_or_else(|| "No key code specified".to_string())?;
+    Ok(Shortcut::new(if modifiers.is_empty() { None } else { Some(modifiers) }, code))
+}
+
+fn str_to_code(s: &str) -> Option<Code> {
+    match s {
+        "a" => Some(Code::KeyA), "b" => Some(Code::KeyB), "c" => Some(Code::KeyC),
+        "d" => Some(Code::KeyD), "e" => Some(Code::KeyE), "f" => Some(Code::KeyF),
+        "g" => Some(Code::KeyG), "h" => Some(Code::KeyH), "i" => Some(Code::KeyI),
+        "j" => Some(Code::KeyJ), "k" => Some(Code::KeyK), "l" => Some(Code::KeyL),
+        "m" => Some(Code::KeyM), "n" => Some(Code::KeyN), "o" => Some(Code::KeyO),
+        "p" => Some(Code::KeyP), "q" => Some(Code::KeyQ), "r" => Some(Code::KeyR),
+        "s" => Some(Code::KeyS), "t" => Some(Code::KeyT), "u" => Some(Code::KeyU),
+        "v" => Some(Code::KeyV), "w" => Some(Code::KeyW), "x" => Some(Code::KeyX),
+        "y" => Some(Code::KeyY), "z" => Some(Code::KeyZ),
+        "0" => Some(Code::Digit0), "1" => Some(Code::Digit1), "2" => Some(Code::Digit2),
+        "3" => Some(Code::Digit3), "4" => Some(Code::Digit4), "5" => Some(Code::Digit5),
+        "6" => Some(Code::Digit6), "7" => Some(Code::Digit7), "8" => Some(Code::Digit8),
+        "9" => Some(Code::Digit9),
+        "space" => Some(Code::Space),
+        "f1" => Some(Code::F1), "f2" => Some(Code::F2), "f3" => Some(Code::F3),
+        "f4" => Some(Code::F4), "f5" => Some(Code::F5), "f6" => Some(Code::F6),
+        "f7" => Some(Code::F7), "f8" => Some(Code::F8), "f9" => Some(Code::F9),
+        "f10" => Some(Code::F10), "f11" => Some(Code::F11), "f12" => Some(Code::F12),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn update_shortcut(app: tauri::AppHandle, shortcut_str: String) -> Result<(), String> {
+    let shortcut = parse_shortcut_str(&shortcut_str)?;
+    app.global_shortcut().unregister_all().map_err(|e| e.to_string())?;
+    let app_handle = app.clone();
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |_app, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                toggle_overlay(&app_handle);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_autostart() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::RegKey;
+        let exe = std::env::current_exe().unwrap_or_default();
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(run_key) = hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run") {
+            if let Ok(val) = run_key.get_value::<String, _>("Arabizi") {
+                return val.to_lowercase() == exe.to_string_lossy().to_lowercase();
+            }
+        }
+    }
+    false
+}
+
+#[tauri::command]
+fn set_autostart(enabled: bool) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS};
+        use winreg::RegKey;
+        let exe = std::env::current_exe().unwrap_or_default();
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        if let Ok(run_key) = hkcu.open_subkey_with_flags(
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+            KEY_ALL_ACCESS,
+        ) {
+            if enabled {
+                let _ = run_key.set_value("Arabizi", &exe.to_string_lossy().into_owned());
+            } else {
+                let _ = run_key.delete_value("Arabizi");
+            }
+            return true;
+        }
+    }
+    false
+}
+
 #[tauri::command]
 fn paste_from_clipboard() {
     thread::spawn(|| {
@@ -210,7 +304,7 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard, record_selection, apply_theme, get_accent_color])
+        .invoke_handler(tauri::generate_handler![transliterate, paste_from_clipboard, record_selection, apply_theme, get_accent_color, update_shortcut, get_autostart, set_autostart])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

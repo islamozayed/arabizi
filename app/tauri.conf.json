@@ -31,5 +31,12 @@
       "iconAsTemplate": true,
       "tooltip": "Arabizi — Franco Arabic Keyboard"
     }
+  },
+  "bundle": {
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": null,
+      "entitlements": "entitlements.plist"
+    }
   }
 }

@@ -333,6 +333,8 @@
       direction: rtl;
       text-align: right;
       padding: 4px;
+      flex: 1;
+      overflow-y: auto;
     }
 
     .preview-text .committed-word {
@@ -2135,6 +2137,7 @@
         parts.push(`<span>${current}</span>`);
       }
       previewText.innerHTML = parts.join(' ');
+      previewText.scrollTop = previewText.scrollHeight;
     }
 
     // ── Init ──

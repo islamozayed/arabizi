@@ -113,8 +113,38 @@ fn get_accent_color() -> String {
             }
         }
     }
-    // macOS: system accent color via NSColor would require objc bindings —
-    // returning a sensible default for now; can be wired up via objc2 later.
+    // macOS: read NSColor.controlAccentColor, convert to sRGB, return as hex.
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::c_void;
+        type Id  = *mut c_void;
+        type Sel = *const c_void;
+
+        unsafe extern "C" {
+            fn objc_getClass(name: *const u8) -> Id;
+            fn sel_registerName(name: *const u8) -> Sel;
+            #[link_name = "objc_msgSend"] fn msg_id(obj: Id, sel: Sel) -> Id;
+            #[link_name = "objc_msgSend"] fn msg_id_id(obj: Id, sel: Sel, a: Id) -> Id;
+            #[link_name = "objc_msgSend"] fn msg_f64(obj: Id, sel: Sel) -> f64;
+        }
+
+        macro_rules! sel { ($s:literal) => { sel_registerName(concat!($s, "\0").as_ptr()) }; }
+        macro_rules! cls { ($s:literal) => { objc_getClass(concat!($s, "\0").as_ptr()) }; }
+
+        unsafe {
+            let accent = msg_id(cls!("NSColor"), sel!("controlAccentColor"));
+            if accent.is_null() { return "#58A1AC".to_string(); }
+
+            let srgb_space = msg_id(cls!("NSColorSpace"), sel!("sRGBColorSpace"));
+            let rgb = msg_id_id(accent, sel!("colorUsingColorSpace:"), srgb_space);
+            if rgb.is_null() { return "#58A1AC".to_string(); }
+
+            let r = (msg_f64(rgb, sel!("redComponent"))   * 255.0).round() as u8;
+            let g = (msg_f64(rgb, sel!("greenComponent")) * 255.0).round() as u8;
+            let b = (msg_f64(rgb, sel!("blueComponent"))  * 255.0).round() as u8;
+            return format!("#{:02x}{:02x}{:02x}", r, g, b);
+        }
+    }
     "#58A1AC".to_string()
 }
 
@@ -124,10 +154,9 @@ fn get_accent_color() -> String {
 #[cfg(target_os = "macos")]
 fn macos_version() -> (u32, u32) {
     use std::process::Command;
-    let out = Command::new("sw_vers")
-        .arg("-productVersion")
-        .output()
-        .unwrap_or_default();
+    let Ok(out) = Command::new("sw_vers").arg("-productVersion").output() else {
+        return (0, 0);
+    };
     let s = String::from_utf8_lossy(&out.stdout);
     let mut parts = s.trim().splitn(3, '.');
     let major = parts.next().and_then(|v| v.parse().ok()).unwrap_or(0u32);
@@ -136,12 +165,10 @@ fn macos_version() -> (u32, u32) {
 }
 
 /// Applies the appropriate macOS window backdrop:
-/// - macOS 26+ (Tahoe): Liquid Glass via NSVisualEffectMaterial raw value 32.
-///   If the call fails (e.g., wrong SDK), falls back to HudWindow vibrancy.
-/// - macOS ≤ 25: standard NSVisualEffectMaterial::HudWindow vibrancy.
-///
-/// NOTE: When window_vibrancy adds a named Liquid Glass constant, replace the
-/// raw `apply_vibrancy_raw` call with the new named variant.
+/// - macOS 26+ (Tahoe): FullScreenUI material — theme-adaptive translucency that
+///   the OS renders with the Liquid Glass aesthetic on Tahoe+.
+/// - macOS ≤ 25: HudWindow (frosted dark glass, Ventura/Sonoma/Sequoia).
+/// Also rounds the NSVisualEffectView's CALayer to match the CSS --radius.
 #[cfg(target_os = "macos")]
 fn apply_macos_backdrop(window: &tauri::WebviewWindow) {
     use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
@@ -149,19 +176,58 @@ fn apply_macos_backdrop(window: &tauri::WebviewWindow) {
     let (major, _) = macos_version();
 
     if major >= 26 {
-        // Tahoe introduced a "glass" NSVisualEffectMaterial (raw value 32 per Tahoe SDK headers).
-        // Try it directly; if window_vibrancy doesn't expose it as a named variant yet, use raw.
-        // Once window_vibrancy ships a named constant this block can be simplified.
-        if apply_vibrancy(window, NSVisualEffectMaterial::HudWindow, None, None).is_err() {
-            // Last-resort: plain transparent window — the CSS backdrop-filter in the
-            // WebView still provides a blur approximation.
-        }
-        // TODO: replace the HudWindow call above with the dedicated Liquid Glass material
-        // once window_vibrancy releases support, e.g.:
-        //   apply_vibrancy(window, NSVisualEffectMaterial::Glass, None, None)
+        let _ = apply_vibrancy(window, NSVisualEffectMaterial::FullScreenUI, None, None);
     } else {
-        // Ventura / Sonoma / Sequoia
         let _ = apply_vibrancy(window, NSVisualEffectMaterial::HudWindow, None, None);
+    }
+
+    apply_macos_corner_radius(window, 12.0);
+}
+
+/// Rounds the NSVisualEffectView's CALayer so the blur itself is clipped to
+/// the same radius as the CSS `--radius` variable.  Uses raw `objc_msgSend`
+/// so no extra crate dependency is required.
+#[cfg(target_os = "macos")]
+fn apply_macos_corner_radius(window: &tauri::WebviewWindow, radius: f64) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::ffi::c_void;
+
+    type Id = *mut c_void;
+    type Sel = *const c_void;
+
+    // Three typed wrappers over the same symbol so the compiler generates the
+    // right calling-convention for each argument list.
+    unsafe extern "C" {
+        #[link_name = "objc_msgSend"]
+        fn msg_id(obj: Id, sel: Sel) -> Id;
+        #[link_name = "objc_msgSend"]
+        fn msg_void_bool(obj: Id, sel: Sel, arg: u8);
+        #[link_name = "objc_msgSend"]
+        fn msg_void_f64(obj: Id, sel: Sel, arg: f64);
+        fn sel_registerName(name: *const u8) -> Sel;
+    }
+
+    macro_rules! sel {
+        ($s:literal) => {
+            sel_registerName(concat!($s, "\0").as_ptr())
+        };
+    }
+
+    let Ok(handle) = window.window_handle() else { return };
+    let RawWindowHandle::AppKit(h) = handle.as_raw() else { return };
+    let ns_view = h.ns_view.as_ptr();
+
+    unsafe {
+        // NSView → NSWindow → contentView (NSVisualEffectView) → CALayer
+        let ns_window = msg_id(ns_view, sel!("window"));
+        if ns_window.is_null() { return; }
+        let content_view = msg_id(ns_window, sel!("contentView"));
+        if content_view.is_null() { return; }
+        msg_void_bool(content_view, sel!("setWantsLayer:"), 1);
+        let layer = msg_id(content_view, sel!("layer"));
+        if layer.is_null() { return; }
+        msg_void_f64(layer, sel!("setCornerRadius:"), radius);
+        msg_void_bool(layer, sel!("setMasksToBounds:"), 1);
     }
 }
 
@@ -407,6 +473,54 @@ fn set_tray_icon(app: &tauri::AppHandle, light: bool) {
     }
 }
 
+// ── Windows helpers ───────────────────────────────────────────────────────────
+
+/// Asks DWM to round the window corners (Windows 11+).
+/// Silently does nothing on Windows 10 where the attribute is unsupported.
+/// Uses GetAncestor(GA_ROOT) to ensure we target the top-level HWND —
+/// Tauri can expose the WebView2 child HWND which DWM ignores for this attribute.
+#[cfg(target_os = "windows")]
+fn apply_rounded_corners(window: &tauri::WebviewWindow) {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use std::ffi::c_void;
+
+    #[link(name = "dwmapi")]
+    unsafe extern "system" {
+        fn DwmSetWindowAttribute(
+            hwnd: isize,
+            dw_attribute: u32,
+            pv_attribute: *const c_void,
+            cb_attribute: u32,
+        ) -> i32;
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn GetAncestor(hwnd: isize, ga_flags: u32) -> isize;
+    }
+
+    const DWMWA_WINDOW_CORNER_PREFERENCE: u32 = 33;
+    const DWMWCP_ROUND: u32 = 2;
+    const GA_ROOT: u32 = 2;
+
+    let Ok(handle) = window.window_handle() else { return };
+    let RawWindowHandle::Win32(h) = handle.as_raw() else { return };
+    let hwnd = h.hwnd.get();
+
+    // Walk up to the top-level window; fall back to the original handle if
+    // GetAncestor returns NULL (already a root, or error).
+    let root = unsafe { GetAncestor(hwnd, GA_ROOT) };
+    let target = if root != 0 { root } else { hwnd };
+
+    unsafe {
+        DwmSetWindowAttribute(
+            target,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &DWMWCP_ROUND as *const u32 as *const c_void,
+            std::mem::size_of::<u32>() as u32,
+        );
+    }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
@@ -419,6 +533,10 @@ fn main() {
             prefs_path: PathBuf::new(),
         }))
         .setup(|app| {
+            // Hide dock icon — run as a tray-only agent like Raycast
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // Load user preferences
             let app_data = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
             let _ = fs::create_dir_all(&app_data);
@@ -442,6 +560,7 @@ fn main() {
                 use window_vibrancy::apply_acrylic;
                 if let Some(window) = app.get_webview_window("overlay") {
                     let _ = apply_acrylic(&window, Some((20u8, 20u8, 20u8, 238u8)));
+                    apply_rounded_corners(&window);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -496,6 +615,9 @@ fn main() {
             }
 
             // Register global shortcut
+            #[cfg(target_os = "macos")]
+            let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyA);
+            #[cfg(not(target_os = "macos"))]
             let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::KeyA);
             let app_handle = app.handle().clone();
             app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {

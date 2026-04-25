@@ -10,6 +10,7 @@
       "csp": "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; font-src 'self'; img-src data: blob:"
     },
     "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "overlay",

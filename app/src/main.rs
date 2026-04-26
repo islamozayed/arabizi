@@ -316,7 +316,7 @@ fn get_autostart() -> bool {
         let exe = std::env::current_exe().unwrap_or_default();
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         if let Ok(run_key) = hkcu.open_subkey("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run") {
-            if let Ok(val) = run_key.get_value::<String, _>("Arabizi") {
+            if let Ok(val) = run_key.get_value::<String, _>("Franconvert") {
                 return val.to_lowercase() == exe.to_string_lossy().to_lowercase();
             }
         }
@@ -347,9 +347,9 @@ fn set_autostart(enabled: bool) -> bool {
             KEY_ALL_ACCESS,
         ) {
             if enabled {
-                let _ = run_key.set_value("Arabizi", &exe.to_string_lossy().into_owned());
+                let _ = run_key.set_value("Franconvert", &exe.to_string_lossy().into_owned());
             } else {
-                let _ = run_key.delete_value("Arabizi");
+                let _ = run_key.delete_value("Franconvert");
             }
             return true;
         }
@@ -423,6 +423,20 @@ fn paste_from_clipboard() {
             }
         }
     });
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+
+/// Called from the onboarding window when the user dismisses it.
+/// Writes a flag file so the window never shows again, then closes the window.
+#[tauri::command]
+fn mark_onboarding_shown(app: tauri::AppHandle) {
+    if let Ok(app_data) = app.path().app_data_dir() {
+        let _ = fs::write(app_data.join("onboarding_shown"), "1");
+    }
+    if let Some(window) = app.get_webview_window("onboarding") {
+        let _ = window.close();
+    }
 }
 
 // ── Tray icon (Windows — macOS uses iconAsTemplate, OS handles light/dark) ────
@@ -570,8 +584,42 @@ fn main() {
                 }
             }
 
+            // Show onboarding on first launch
+            let onboarding_flag = app_data.join("onboarding_shown");
+            if !onboarding_flag.exists() {
+                let ob = tauri::WebviewWindowBuilder::new(
+                    app,
+                    "onboarding",
+                    tauri::WebviewUrl::App("onboarding.html".into()),
+                )
+                .title("Welcome to Franconvert")
+                .inner_size(480.0, 380.0)
+                .resizable(false)
+                .decorations(false)
+                .always_on_top(true)
+                .center()
+                .skip_taskbar(true)
+                .shadow(true)
+                .transparent(true)
+                .build()?;
+
+                #[cfg(target_os = "windows")]
+                {
+                    use window_vibrancy::apply_acrylic;
+                    let tint = if is_light_theme() {
+                        (245u8, 245u8, 245u8, 238u8)
+                    } else {
+                        (20u8, 20u8, 20u8, 238u8)
+                    };
+                    let _ = apply_acrylic(&ob, Some(tint));
+                    apply_rounded_corners(&ob);
+                }
+                #[cfg(target_os = "macos")]
+                apply_macos_backdrop(&ob);
+            }
+
             // Build tray menu
-            let show = MenuItem::with_id(app, "show", "Show Arabizi", true, None::<&str>)?;
+            let show = MenuItem::with_id(app, "show", "Show Franconvert", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
 
@@ -637,12 +685,21 @@ fn main() {
             update_shortcut,
             get_autostart,
             set_autostart,
+            mark_onboarding_shown,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 fn toggle_overlay(app: &tauri::AppHandle) {
+    // If the onboarding window is still open, signal it that the shortcut was used
+    // so it can play its success animation and close itself.
+    if let Some(ob) = app.get_webview_window("onboarding") {
+        if ob.is_visible().unwrap_or(false) {
+            let _ = ob.emit("shortcut-used", ());
+        }
+    }
+
     if let Some(window) = app.get_webview_window("overlay") {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();

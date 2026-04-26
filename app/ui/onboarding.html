@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Franconvert</title>
+  <style>
+    @font-face {
+      font-family: 'Manrope';
+      src: url('fonts/Manrope-VariableFont_wght.ttf') format('truetype');
+      font-weight: 200 800;
+      font-display: swap;
+    }
+
+    :root {
+      --font: 'Manrope', system-ui, sans-serif;
+      /* accent + derived glow are set dynamically from the OS accent color */
+      --accent: #58A1AC;
+      --accent-glow: rgba(88, 161, 172, 0.45);
+      --radius: 8px;
+    }
+
+    [data-theme="dark"] {
+      --bg: rgba(33, 33, 33, 0.6);
+      --border: #717171;
+      --text: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.4);
+      --key-bg: rgba(255, 255, 255, 0.1);
+      --key-border: #717171;
+      --key-color: #ffffff;
+      --btn-bg: rgba(255, 255, 255, 0.08);
+      --btn-hover: rgba(255, 255, 255, 0.14);
+      --btn-border: rgba(113, 113, 113, 0.8);
+      --logo-fill: #ffffff;
+    }
+
+    [data-theme="light"] {
+      --bg: rgba(245, 245, 245, 0.6);
+      --border: #c0c0c0;
+      --text: #1a1a1a;
+      --text-muted: rgba(0, 0, 0, 0.38);
+      --key-bg: rgba(0, 0, 0, 0.06);
+      --key-border: #c0c0c0;
+      --key-color: #1a1a1a;
+      --btn-bg: rgba(0, 0, 0, 0.05);
+      --btn-hover: rgba(0, 0, 0, 0.09);
+      --btn-border: rgba(192, 192, 192, 0.9);
+      --logo-fill: #1a1a1a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: var(--font);
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Panel ─────────────────────────────────────────────────────────────── */
+    /* Uses `border` (not `outline`) so it clips properly to border-radius.
+       overflow:hidden ensures the glass bg never bleeds past the rounded corners. */
+    .panel {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 42px;
+      padding: 20px 12px 32px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    /* ── Reveal animation ──────────────────────────────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(10px);
+      animation: revealUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes revealUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Logo section ──────────────────────────────────────────────────────── */
+    .logo-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .logo svg {
+      fill: var(--logo-fill);
+      width: 48px;
+      height: auto;
+      display: block;
+    }
+
+    .welcome-text {
+      color: var(--text);
+      font-size: 16px;
+      line-height: 20px;
+      font-weight: 500;
+    }
+
+    /* ── Keys section ──────────────────────────────────────────────────────── */
+    .keys-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .instruction-text {
+      color: var(--text);
+      font-size: 16px;
+      line-height: 20px;
+      font-weight: 400;
+    }
+
+    .keys-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .key {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 8px;
+      background: var(--key-bg);
+      border: 1px solid var(--key-border);
+      border-radius: 4px;
+      color: var(--key-color);
+      font-family: var(--font);
+      font-size: 40px;
+      line-height: 48px;
+      font-weight: 400;
+      transition:
+        background 0.1s ease,
+        border-color 0.1s ease,
+        color 0.1s ease,
+        transform 0.08s ease,
+        box-shadow 0.1s ease;
+    }
+
+    /* Key held: system accent fill + matching glow */
+    .key.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+      transform: scale(0.95);
+      box-shadow: 0 2px 16px var(--accent-glow);
+    }
+
+    /* All keys correct: green success state */
+    .key.success {
+      background: #22c55e;
+      border-color: #22c55e;
+      color: #ffffff;
+      transform: scale(1.02);
+      box-shadow: 0 2px 16px rgba(34, 197, 94, 0.45);
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+    }
+
+    .hint-text {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    /* ── Got it button ─────────────────────────────────────────────────────── */
+    .got-it-btn {
+      padding: 7px 24px;
+      background: var(--btn-bg);
+      border: 1px solid var(--btn-border);
+      border-radius: 6px;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.1s;
+      outline: none;
+      letter-spacing: 0.01em;
+    }
+
+    .got-it-btn:hover { background: var(--btn-hover); }
+
+    .got-it-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel">
+
+    <!-- Logo + welcome -->
+    <div class="logo-section">
+      <div class="reveal" style="animation-delay: 0.08s">
+        <div class="logo">
+          <svg
+            width="180" height="136"
+            viewBox="0 0 180 136"
+            xmlns="http://www.w3.org/2000/svg"
+            style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2"
+          >
+            <g transform="translate(-884.184,-650.24)">
+              <g transform="matrix(0.764,0,0,1,309.843,252.667)">
+                <path d="M861.458,427.505L861.458,451.139L845.995,451.139L782.457,451.139L782.457,533.352L751.531,533.352L751.531,439.322C751.531,432.795 758.454,427.505 766.994,427.505L861.458,427.505Z"/>
+              </g>
+              <g transform="matrix(0.764,0,0,1,309.843,252.667)">
+                <rect x="751.531" y="468.611" width="109.927" height="23.635"/>
+              </g>
+              <g transform="matrix(0.891,0,0,1,262.912,221.837)">
+                <path d="M872.683,523.075L817.449,523.075C810.122,523.075 804.183,517.784 804.183,511.258L804.183,470.152C804.183,463.625 810.122,458.334 817.449,458.334L885.949,458.334C893.276,458.334 899.216,463.625 899.216,470.152L899.216,552.364C899.216,558.89 893.276,564.181 885.949,564.181L740.337,564.181L740.337,540.547L872.683,540.547L872.683,523.075ZM872.683,499.44L872.683,481.969L830.716,481.969L830.716,499.44L872.683,499.44Z"/>
+              </g>
+              <g transform="matrix(1,0,0,1,152.293,222.479)">
+                <circle cx="869.117" cy="438.68" r="10.919"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="reveal welcome-text" style="animation-delay: 0.26s">
+        Welcome to Franconvert 👋
+      </div>
+    </div>
+
+    <!-- Keys section -->
+    <div class="keys-section">
+      <div class="reveal instruction-text" style="animation-delay: 0.46s">
+        Launch the widget by holding
+      </div>
+      <div class="keys-row">
+        <div class="key reveal" id="key-mod"   style="animation-delay: 0.62s">CTRL</div>
+        <div class="key reveal" id="key-shift" style="animation-delay: 0.76s">SHIFT</div>
+        <div class="key reveal" id="key-a"     style="animation-delay: 0.90s">A</div>
+      </div>
+      <div class="reveal hint-text" style="animation-delay: 1.05s">
+        You can change this later in settings
+      </div>
+    </div>
+
+    <!-- Dismiss -->
+    <button class="got-it-btn reveal" id="got-it-btn" style="animation-delay: 1.22s">
+      Got it
+    </button>
+
+  </div>
+
+  <script>
+    const { invoke } = window.__TAURI__.core;
+    const { getCurrentWindow } = window.__TAURI__.window;
+
+    // ── Theme ────────────────────────────────────────────────────────────────
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    function applyTheme() {
+      document.documentElement.setAttribute('data-theme', mql.matches ? 'dark' : 'light');
+    }
+    applyTheme();
+    mql.addEventListener('change', applyTheme);
+
+    // ── System accent color ──────────────────────────────────────────────────
+    // Fetch from the OS via the same command the main overlay uses, then set
+    // --accent and a pre-computed --accent-glow so CSS transitions stay smooth.
+    invoke('get_accent_color').then(hex => {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      document.documentElement.style.setProperty('--accent', hex);
+      document.documentElement.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.45)`);
+    }).catch(() => { /* keep default */ });
+
+    // ── Platform: CMD on macOS, CTRL elsewhere ───────────────────────────────
+    const isMac = /mac/i.test(navigator.platform) || /macintosh/i.test(navigator.userAgent);
+    const keyModEl   = document.getElementById('key-mod');
+    const keyShiftEl = document.getElementById('key-shift');
+    const keyAEl     = document.getElementById('key-a');
+
+    if (isMac) keyModEl.textContent = 'CMD';
+
+    // ── Key state tracking ───────────────────────────────────────────────────
+    const held = new Set(); // physical e.code values currently pressed
+    let successFired = false;
+
+    function isModHeld()   { return isMac ? held.has('MetaLeft')    || held.has('MetaRight')
+                                          : held.has('ControlLeft') || held.has('ControlRight'); }
+    function isShiftHeld() { return held.has('ShiftLeft') || held.has('ShiftRight'); }
+    function isAHeld()     { return held.has('KeyA'); }
+
+    function renderKeys() {
+      if (successFired) return;
+      const mod   = isModHeld();
+      const shift = isShiftHeld();
+      // A only highlights once both modifier + shift are held (shows the full chord)
+      const a = mod && shift && isAHeld();
+      keyModEl.classList.toggle('active', mod);
+      keyShiftEl.classList.toggle('active', shift);
+      keyAEl.classList.toggle('active', a);
+    }
+
+    function triggerSuccess() {
+      if (successFired) return;
+      successFired = true;
+      [keyModEl, keyShiftEl, keyAEl].forEach(k => {
+        k.classList.remove('active');
+        k.classList.add('success');
+      });
+      setTimeout(dismiss, 850);
+    }
+
+    // In-window key tracking (handles individual modifier highlights)
+    document.addEventListener('keydown', e => {
+      held.add(e.code);
+      renderKeys();
+      // Also try to detect the full chord in-window (fires before blur on most
+      // platforms, but the shortcut-used event below is the reliable fallback)
+      if (!successFired && isModHeld() && isShiftHeld() && isAHeld()) {
+        triggerSuccess();
+      }
+    });
+
+    document.addEventListener('keyup', e => {
+      held.delete(e.code);
+      renderKeys();
+    });
+
+    window.addEventListener('blur', () => {
+      held.clear();
+      renderKeys();
+    });
+
+    // ── Tauri event: shortcut fired at OS level ───────────────────────────────
+    // When the global shortcut fires, toggle_overlay emits this event here so
+    // we reliably trigger the success state even if the webview never saw
+    // the keydown (OS intercepted it before the webview did).
+    getCurrentWindow().listen('shortcut-used', () => {
+      if (!successFired) {
+        // Briefly flash all keys as active, then green
+        [keyModEl, keyShiftEl, keyAEl].forEach(k => k.classList.add('active'));
+        setTimeout(triggerSuccess, 130);
+      }
+    });
+
+    // ── Dismiss ──────────────────────────────────────────────────────────────
+    function dismiss() {
+      invoke('mark_onboarding_shown').catch(() => {});
+    }
+
+    document.getElementById('got-it-btn').addEventListener('click', dismiss);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') dismiss(); });
+  </script>
+</body>
+</html>

@@ -39,6 +39,34 @@ struct TransliterateResult {
 
 // ── Transliteration ───────────────────────────────────────────────────────────
 
+/// Maps an ASCII punctuation character to its Arabic RTL equivalent.
+fn to_arabic_punct(c: char) -> char {
+    match c {
+        '?' => '؟',
+        ',' => '،',
+        ';' => '؛',
+        c   => c,
+    }
+}
+
+/// Strips leading and trailing ASCII punctuation from a word token,
+/// returning `(arabic_prefix, core_word, arabic_suffix)`.
+/// The stripped punctuation is mapped to its Arabic equivalent so that
+/// e.g. "ya3ni?" splits into ("", "ya3ni", "؟").
+fn extract_punctuation(word: &str) -> (String, String, String) {
+    let chars: Vec<char> = word.chars().collect();
+    let n = chars.len();
+    let lead_n  = chars.iter().take_while(|&&c| c.is_ascii_punctuation()).count();
+    let trail_n = chars.iter().rev()
+        .take_while(|&&c| c.is_ascii_punctuation())
+        .count()
+        .min(n.saturating_sub(lead_n));   // never overlap with leading run
+    let prefix: String = chars[..lead_n].iter().map(|&c| to_arabic_punct(c)).collect();
+    let core:   String = chars[lead_n..n - trail_n].iter().collect();
+    let suffix: String = chars[n - trail_n..].iter().map(|&c| to_arabic_punct(c)).collect();
+    (prefix, core, suffix)
+}
+
 #[tauri::command]
 fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> TransliterateResult {
     let state = state.lock().unwrap();
@@ -55,7 +83,7 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
     let words: Vec<WordResult> = parts
         .iter()
         .map(|w| {
-            // Emoticons bypass Arabic transliteration entirely — return emojis as candidates
+            // Emoticons are composed of punctuation — check before stripping.
             if let Some(emojis) = state.engine.lookup_emoticon(w) {
                 return WordResult {
                     input: w.to_string(),
@@ -64,8 +92,27 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
                     selected: 0,
                 };
             }
-            let candidates = state.engine.transliterate_word_ranked(w, Some(&state.prefs));
-            let emojis = state.engine.lookup_emojis(&candidates);
+
+            // Strip leading/trailing punctuation and map to Arabic equivalents.
+            let (prefix, core, suffix) = extract_punctuation(w);
+
+            // Pure punctuation token (e.g. a standalone "?").
+            if core.is_empty() {
+                return WordResult {
+                    input: w.to_string(),
+                    candidates: vec![format!("{}{}", prefix, suffix)],
+                    emojis: vec![],
+                    selected: 0,
+                };
+            }
+
+            // Transliterate the bare word, then reattach Arabic punctuation.
+            let candidates_raw = state.engine.transliterate_word_ranked(&core, Some(&state.prefs));
+            let emojis = state.engine.lookup_emojis(&candidates_raw);
+            let candidates = candidates_raw
+                .into_iter()
+                .map(|c| format!("{}{}{}", prefix, c, suffix))
+                .collect();
             WordResult {
                 input: w.to_string(),
                 candidates,

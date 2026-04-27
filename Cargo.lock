@@ -54,6 +54,7 @@ dependencies = [
  "arabizi-engine",
  "enigo",
  "image",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "tauri",

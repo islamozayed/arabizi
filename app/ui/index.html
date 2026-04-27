@@ -2039,8 +2039,11 @@
     async function commitAll() {
       const text = committedWords.map(w => w.arabic).join(' ');
       await writeText(text);
-      await getCurrentWindow().hide();
-      setTimeout(() => invoke('paste_from_clipboard'), 100);
+      // hide_and_paste hides the overlay AND restores focus to the
+      // previously-active app on macOS (NSApp.hide:), then sends Cmd+V.
+      // Using window.hide() alone leaves us as the active Accessory app
+      // and the simulated keystroke is delivered to nothing.
+      await invoke('hide_and_paste');
     }
 
     // ── Rendering ──

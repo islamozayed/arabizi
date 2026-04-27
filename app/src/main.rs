@@ -1,11 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use arabizi_engine::{TransliterationEngine, UserPreferences};
+#[cfg(not(target_os = "macos"))]
 use enigo::{Enigo, Key, Keyboard, Settings, Direction};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::thread;
 use std::time::Duration;
 use tauri::{
@@ -448,27 +451,200 @@ fn launchagent_path() -> Option<PathBuf> {
         .map(|home| PathBuf::from(home).join("Library/LaunchAgents/com.arabizi.app.plist"))
 }
 
+// ── macOS frontmost-app tracking ──────────────────────────────────────────────
+//
+// As an Accessory app, calling `window.show() + set_focus()` makes us the
+// active app, which means `[NSApp hide:]` alone does not reliably restore
+// focus to the *specific* app the user was typing into. Instead we capture
+// the frontmost app's PID *before* we steal focus, then explicitly
+// reactivate it before sending the paste keystroke.
+
+#[cfg(target_os = "macos")]
+static PREV_APP_PID: AtomicI32 = AtomicI32::new(0);
+
+#[cfg(target_os = "macos")]
+mod mac_focus {
+    use std::ffi::c_void;
+
+    type Id = *mut c_void;
+    type Sel = *const c_void;
+
+    unsafe extern "C" {
+        fn objc_getClass(name: *const u8) -> Id;
+        fn sel_registerName(name: *const u8) -> Sel;
+        #[link_name = "objc_msgSend"]
+        fn msg_id(obj: Id, sel: Sel) -> Id;
+        #[link_name = "objc_msgSend"]
+        fn msg_id_i32(obj: Id, sel: Sel, a: i32) -> Id;
+        #[link_name = "objc_msgSend"]
+        fn msg_bool_u64(obj: Id, sel: Sel, a: u64) -> u8;
+        #[link_name = "objc_msgSend"]
+        fn msg_i32(obj: Id, sel: Sel) -> i32;
+    }
+
+    macro_rules! sel { ($s:literal) => { unsafe { sel_registerName(concat!($s, "\0").as_ptr()) } }; }
+    macro_rules! cls { ($s:literal) => { unsafe { objc_getClass(concat!($s, "\0").as_ptr()) } }; }
+
+    /// Returns the PID of the currently frontmost application, or 0.
+    pub fn frontmost_pid() -> i32 {
+        unsafe {
+            let workspace = msg_id(cls!("NSWorkspace"), sel!("sharedWorkspace"));
+            if workspace.is_null() { return 0; }
+            let app = msg_id(workspace, sel!("frontmostApplication"));
+            if app.is_null() { return 0; }
+            msg_i32(app, sel!("processIdentifier"))
+        }
+    }
+
+    /// Activate the application with the given PID, ignoring other apps.
+    /// Returns true if activation was attempted successfully.
+    pub fn activate_pid(pid: i32) -> bool {
+        if pid <= 0 { return false; }
+        unsafe {
+            let app_class = cls!("NSRunningApplication");
+            let app = msg_id_i32(app_class, sel!("runningApplicationWithProcessIdentifier:"), pid);
+            if app.is_null() { return false; }
+            // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+            let result = msg_bool_u64(app, sel!("activateWithOptions:"), 2);
+            result != 0
+        }
+    }
+}
+
+/// Remember which app was frontmost so we can return focus to it after paste.
+/// Call this *before* showing the overlay window.
+fn capture_prev_focus() {
+    #[cfg(target_os = "macos")]
+    {
+        let pid = mac_focus::frontmost_pid();
+        // Don't overwrite with our own PID if we somehow re-enter this path
+        // while already active — that would lose the real previous app.
+        if pid > 0 && pid != std::process::id() as i32 {
+            PREV_APP_PID.store(pid, Ordering::SeqCst);
+        }
+    }
+}
+
 // ── Clipboard paste ───────────────────────────────────────────────────────────
 
 #[tauri::command]
 fn paste_from_clipboard() {
     thread::spawn(|| {
         thread::sleep(Duration::from_millis(200));
-        if let Ok(mut enigo) = Enigo::new(&Settings::default()) {
-            // macOS uses Cmd (Meta) + V; all other platforms use Ctrl + V
-            #[cfg(target_os = "macos")]
-            {
-                let _ = enigo.key(Key::Meta, Direction::Press);
-                let _ = enigo.key(Key::Unicode('v'), Direction::Click);
-                let _ = enigo.key(Key::Meta, Direction::Release);
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                let _ = enigo.key(Key::Control, Direction::Press);
-                let _ = enigo.key(Key::Unicode('v'), Direction::Click);
-                let _ = enigo.key(Key::Control, Direction::Release);
-            }
+        send_paste_keystroke();
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn send_paste_keystroke() {
+    if let Ok(mut enigo) = Enigo::new(&Settings::default()) {
+        let _ = enigo.key(Key::Control, Direction::Press);
+        let _ = enigo.key(Key::Unicode('v'), Direction::Click);
+        let _ = enigo.key(Key::Control, Direction::Release);
+    }
+}
+
+/// macOS paste, posted via Core Graphics with the raw virtual keycode for V.
+///
+/// We bypass enigo's `Key::Unicode('v')` path because on macOS 26+ it calls
+/// `TSMGetInputSourceProperty`, which asserts it must run on the main thread
+/// (`dispatch_assert_queue`) and otherwise traps the process — silently
+/// killing it with no Rust panic. `CGEventPost` is thread-safe and does not
+/// touch TextInputSources, so this is safe to call from any thread.
+#[cfg(target_os = "macos")]
+fn send_paste_keystroke() {
+    use std::ffi::c_void;
+
+    type CGEventRef = *mut c_void;
+    type CGEventSourceRef = *mut c_void;
+
+    const KCGEVENT_SOURCE_STATE_HID_SYSTEM: i32 = 1;
+    const KCG_HID_EVENT_TAP: u32 = 0;
+    const KCG_EVENT_FLAG_MASK_COMMAND: u64 = 1 << 20;
+    const KVK_ANSI_V: u16 = 0x09;
+
+    unsafe extern "C" {
+        fn CGEventSourceCreate(state_id: i32) -> CGEventSourceRef;
+        fn CGEventCreateKeyboardEvent(
+            source: CGEventSourceRef,
+            virtual_key: u16,
+            key_down: bool,
+        ) -> CGEventRef;
+        fn CGEventSetFlags(event: CGEventRef, flags: u64);
+        fn CGEventPost(tap: u32, event: CGEventRef);
+        fn CFRelease(obj: *const c_void);
+    }
+
+    unsafe {
+        let source = CGEventSourceCreate(KCGEVENT_SOURCE_STATE_HID_SYSTEM);
+        // A null source is allowed and just means "synthesize from scratch".
+
+        let key_down = CGEventCreateKeyboardEvent(source, KVK_ANSI_V, true);
+        let key_up = CGEventCreateKeyboardEvent(source, KVK_ANSI_V, false);
+        if key_down.is_null() || key_up.is_null() {
+            if !key_down.is_null() { CFRelease(key_down); }
+            if !key_up.is_null() { CFRelease(key_up); }
+            if !source.is_null() { CFRelease(source); }
+            return;
         }
+
+        CGEventSetFlags(key_down, KCG_EVENT_FLAG_MASK_COMMAND);
+        CGEventSetFlags(key_up, KCG_EVENT_FLAG_MASK_COMMAND);
+
+        CGEventPost(KCG_HID_EVENT_TAP, key_down);
+        CGEventPost(KCG_HID_EVENT_TAP, key_up);
+
+        CFRelease(key_down);
+        CFRelease(key_up);
+        if !source.is_null() { CFRelease(source); }
+    }
+}
+
+/// Hide the overlay, return focus to the app that was frontmost before we
+/// opened, and send Cmd+V (or Ctrl+V) so the clipboard contents land in that
+/// app's text field.
+///
+/// On macOS, the Accessory activation policy means `window.hide()` alone does
+/// not deactivate us, and even `[NSApp hide:]` does not reliably re-focus the
+/// *specific* app the user was typing into. So we explicitly reactivate the
+/// PID captured in `capture_prev_focus()` and then synthesize the paste.
+#[tauri::command]
+fn hide_and_paste(app: tauri::AppHandle) {
+    #[cfg(target_os = "macos")]
+    let prev_pid = PREV_APP_PID.swap(0, Ordering::SeqCst);
+
+    // AppKit (NSWindow ops, NSRunningApplication.activateWithOptions) must
+    // run on the main thread. Tauri command handlers run on a worker thread,
+    // so we hop to the main thread before touching any of it.
+    //
+    // Note: we deliberately do NOT call `app.hide()` (NSApp.hide:) here —
+    // when combined with window.hide() in the same tick it has caused
+    // crashes in Tauri 2. Activating the previous app via
+    // NSRunningApplication is sufficient to swap focus on macOS.
+    let app_for_main = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(window) = app_for_main.get_webview_window("overlay") {
+            let _ = window.hide();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            mac_focus::activate_pid(prev_pid);
+        }
+    });
+
+    // The keystroke synthesis itself uses CGEventPost (via enigo), which is
+    // thread-safe, so we sleep + send from a background thread to avoid
+    // blocking the main thread / IPC reply.
+    thread::spawn(move || {
+        // Give AppKit time to actually make the target app key/active before
+        // we synthesize the paste.
+        #[cfg(target_os = "macos")]
+        thread::sleep(Duration::from_millis(160));
+        #[cfg(not(target_os = "macos"))]
+        thread::sleep(Duration::from_millis(80));
+
+        send_paste_keystroke();
+        let _ = app;
     });
 }
 
@@ -726,6 +902,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             transliterate,
             paste_from_clipboard,
+            hide_and_paste,
             record_selection,
             apply_theme,
             get_accent_color,
@@ -751,6 +928,9 @@ fn toggle_overlay(app: &tauri::AppHandle) {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
         } else {
+            // Snapshot whoever's frontmost *before* we steal focus, so we can
+            // hand focus back to them when the user commits a paste.
+            capture_prev_focus();
             let _ = window.show();
             let _ = window.set_focus();
             let _ = window.emit("focus-input", ());

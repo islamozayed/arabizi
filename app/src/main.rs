@@ -372,7 +372,7 @@ fn get_autostart() -> bool {
         }
     }
 
-    // macOS: check for a LaunchAgent plist at ~/Library/LaunchAgents/com.arabizi.app.plist
+    // macOS: check for a LaunchAgent plist at ~/Library/LaunchAgents/com.franconvert.app.plist
     #[cfg(target_os = "macos")]
     {
         if let Some(plist_path) = launchagent_path() {
@@ -418,7 +418,7 @@ fn set_autostart(enabled: bool) -> bool {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.arabizi.app</string>
+    <string>com.franconvert.app</string>
     <key>ProgramArguments</key>
     <array>
         <string>{exe_str}</string>
@@ -448,7 +448,7 @@ fn set_autostart(enabled: bool) -> bool {
 fn launchagent_path() -> Option<PathBuf> {
     std::env::var("HOME")
         .ok()
-        .map(|home| PathBuf::from(home).join("Library/LaunchAgents/com.arabizi.app.plist"))
+        .map(|home| PathBuf::from(home).join("Library/LaunchAgents/com.franconvert.app.plist"))
 }
 
 // ── macOS frontmost-app tracking ──────────────────────────────────────────────

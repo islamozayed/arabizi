@@ -48,24 +48,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "arabizi-app"
-version = "0.1.0"
-dependencies = [
- "arabizi-engine",
- "enigo",
- "image",
- "raw-window-handle",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-global-shortcut",
- "window-vibrancy",
- "winreg 0.56.0",
-]
-
-[[package]]
 name = "arabizi-engine"
 version = "0.1.0"
 
@@ -989,6 +971,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "franconvert"
+version = "0.1.0"
+dependencies = [
+ "arabizi-engine",
+ "enigo",
+ "image",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-global-shortcut",
+ "window-vibrancy",
+ "winreg 0.56.0",
 ]
 
 [[package]]

@@ -1,7 +1,7 @@
 {
   "productName": "Franconvert",
   "version": "0.1.0",
-  "identifier": "com.arabizi.app",
+  "identifier": "com.franconvert.app",
   "build": {
     "frontendDist": "./ui"
   },

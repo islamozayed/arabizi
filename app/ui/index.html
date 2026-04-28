@@ -728,6 +728,19 @@
 
     .settings-btn:hover svg { fill: var(--accent); }
 
+    /* Hidden while the first-run tutorial hint occupies the header so the
+       icon doesn't get pushed against the edge of the container. */
+    .settings-btn.tutorial-hidden { display: none; }
+
+    .settings-btn.tutorial-reveal {
+      animation: settingsSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes settingsSlideIn {
+      from { opacity: 0; transform: translateX(14px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
     /* Scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -2048,13 +2061,24 @@
 
     // ── Rendering ──
     let tutorialSeen = localStorage.getItem('arabizi-tutorial-seen') === 'true';
-    if (tutorialSeen) inputHint.classList.add('hidden');
+    if (tutorialSeen) {
+      inputHint.classList.add('hidden');
+    } else {
+      settingsBtn.classList.add('tutorial-hidden');
+    }
 
     function dismissTutorial() {
       if (!tutorialSeen) {
         tutorialSeen = true;
         localStorage.setItem('arabizi-tutorial-seen', 'true');
         inputHint.classList.add('hidden');
+        settingsBtn.classList.remove('tutorial-hidden');
+        settingsBtn.classList.add('tutorial-reveal');
+        settingsBtn.addEventListener(
+          'animationend',
+          () => settingsBtn.classList.remove('tutorial-reveal'),
+          { once: true },
+        );
       }
     }
 

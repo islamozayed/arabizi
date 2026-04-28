@@ -921,6 +921,19 @@ fn toggle_overlay(app: &tauri::AppHandle) {
     if let Some(ob) = app.get_webview_window("onboarding") {
         if ob.is_visible().unwrap_or(false) {
             let _ = ob.emit("shortcut-used", ());
+            // Guarantee the onboarding window dismisses even if its JS
+            // setTimeout is throttled while the window is backgrounded
+            // behind the overlay (common on macOS/Windows).
+            let app_handle = app.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(1000));
+                if let Ok(app_data) = app_handle.path().app_data_dir() {
+                    let _ = fs::write(app_data.join("onboarding_shown"), "1");
+                }
+                if let Some(w) = app_handle.get_webview_window("onboarding") {
+                    let _ = w.close();
+                }
+            });
         }
     }
 

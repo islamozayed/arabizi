@@ -14,6 +14,8 @@ use std::time::Duration;
 use tauri::{
     Emitter,
     Manager,
+    PhysicalPosition,
+    WindowEvent,
     menu::{Menu, MenuItem},
     tray::TrayIconEvent,
 };
@@ -648,6 +650,31 @@ fn hide_and_paste(app: tauri::AppHandle) {
     });
 }
 
+// ── Window position persistence ───────────────────────────────────────────────
+
+/// Read a saved overlay position from disk, returning (x, y) physical pixels.
+fn load_window_position(path: &PathBuf) -> Option<(i32, i32)> {
+    let data = fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&data).ok()?;
+    let x = v.get("x")?.as_i64()? as i32;
+    let y = v.get("y")?.as_i64()? as i32;
+    Some((x, y))
+}
+
+/// Returns true if the position lies inside any connected monitor's bounds.
+/// Prevents restoring the overlay onto a now-disconnected display.
+fn position_visible(window: &tauri::WebviewWindow, x: i32, y: i32) -> bool {
+    let Ok(monitors) = window.available_monitors() else { return false };
+    monitors.iter().any(|m| {
+        let pos = m.position();
+        let size = m.size();
+        x >= pos.x
+            && y >= pos.y
+            && x < pos.x + size.width as i32
+            && y < pos.y + size.height as i32
+    })
+}
+
 // ── Onboarding ────────────────────────────────────────────────────────────────
 
 /// Called from the onboarding window when the user dismisses it.
@@ -805,6 +832,25 @@ fn main() {
                 if let Some(window) = app.get_webview_window("overlay") {
                     apply_macos_backdrop(&window);
                 }
+            }
+
+            // Restore the user's last overlay position (and persist any future
+            // moves). Falls back to the centered position from tauri.conf.json
+            // if no saved position exists or it lies off-screen.
+            let window_pos_path = app_data.join("window_pos.json");
+            if let Some(window) = app.get_webview_window("overlay") {
+                if let Some((x, y)) = load_window_position(&window_pos_path) {
+                    if position_visible(&window, x, y) {
+                        let _ = window.set_position(PhysicalPosition::new(x, y));
+                    }
+                }
+                let save_path = window_pos_path.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::Moved(p) = event {
+                        let json = format!("{{\"x\":{},\"y\":{}}}", p.x, p.y);
+                        let _ = fs::write(&save_path, json);
+                    }
+                });
             }
 
             // Show onboarding on first launch

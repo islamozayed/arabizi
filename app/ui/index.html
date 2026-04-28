@@ -206,7 +206,11 @@
       flex: 1;
       gap: 4px;
       overflow-y: auto;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
     }
+    .tips-panel:active { cursor: grabbing; }
 
     .mapping-section-label {
       font-size: 10px;
@@ -254,7 +258,14 @@
     .typing-panels {
       display: flex;
       flex: 1;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
     }
+    .typing-panels:active { cursor: grabbing; }
+    .typing-panels .suggestion,
+    .typing-panels .emoji-item,
+    .typing-panels .committed-word { cursor: pointer; }
 
     .suggestions-panel {
       width: 142px;
@@ -1258,6 +1269,32 @@
     let editingWordIdx = -1;
     let settingsOpen = false;
     let activeSettingsPage = 'appearance';
+
+    // ── Drag-to-move in middle panels ──
+    // Suggestions/preview panels and the tips panel act as drag handles, except
+    // for genuinely interactive children (clickable suggestion rows, emoji
+    // chips, committed words in the preview, buttons, inputs).
+    const DRAG_INTERACTIVE_SELECTOR =
+      '.suggestion, .emoji-item, .committed-word, button, input, a, [contenteditable="true"]';
+    // Mirrors Tauri's built-in `data-tauri-drag-region` handler: invoke the
+    // start_dragging IPC directly on mousedown. Calling
+    // getCurrentWindow().startDragging() goes through a Promise tick that
+    // sometimes lands after the OS has already started its own selection
+    // gesture, so the drag never begins.
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || e.detail !== 1) return;
+      const zone = e.target.closest('#tips-panel, #typing-panels');
+      if (!zone) return;
+      if (e.target.closest(DRAG_INTERACTIVE_SELECTOR)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const internals = window.__TAURI_INTERNALS__;
+      if (internals && internals.invoke) {
+        internals.invoke('plugin:window|start_dragging');
+      } else {
+        invoke('plugin:window|start_dragging');
+      }
+    });
 
     // ── Settings ──
     const settings = {

@@ -2213,6 +2213,21 @@
     initAccessibility();
     renderAll();
     inputEl.focus();
+
+    // ── Auto-update check ──
+    // Pings the updater endpoint once per launch. If a newer signed bundle
+    // is published on GitHub Releases, it's downloaded and installed in the
+    // background; the next app launch runs the new version.
+    (async () => {
+      try {
+        const updater = window.__TAURI__ && window.__TAURI__.updater;
+        if (!updater || !updater.check) return;
+        const update = await updater.check();
+        if (update && update.available) {
+          await update.downloadAndInstall();
+        }
+      } catch (_) { /* offline or endpoint unreachable — ignore */ }
+    })();
   </script>
 </body>
 </html>

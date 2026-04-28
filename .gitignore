@@ -1,2 +1,4 @@
 /target
 /app/gen/schemas/
+*.key
+*.key.pub

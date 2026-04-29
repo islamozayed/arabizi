@@ -793,6 +793,84 @@
       margin: 0 2px;
     }
 
+    /* Update banner */
+    .update-banner {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      right: 8px;
+      background: var(--bg-surface);
+      outline: 1px solid var(--outline);
+      backdrop-filter: blur(50px);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      z-index: 150;
+      transform: translateY(-120%);
+      opacity: 0;
+      transition: transform 0.25s ease, opacity 0.2s;
+      pointer-events: none;
+    }
+    .update-banner.show {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .update-banner-text {
+      flex: 1;
+      font: 12px/16px var(--font);
+      color: var(--text-primary);
+      min-width: 0;
+    }
+    .update-banner-text .ub-title {
+      font-weight: 600;
+    }
+    .update-banner-text .ub-sub {
+      color: var(--text-secondary);
+      font-size: 11px;
+      margin-top: 1px;
+    }
+    .update-banner-btn {
+      font: 600 11px/14px var(--font);
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--outline);
+      background: transparent;
+      color: var(--text-primary);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .update-banner-btn:hover {
+      background: var(--item-hover);
+    }
+    .update-banner-btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .update-banner-btn.primary:hover {
+      filter: brightness(1.1);
+    }
+    .update-banner-btn[disabled] {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .update-progress {
+      flex: 1;
+      height: 4px;
+      background: var(--kbd-bg);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .update-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 0.2s;
+    }
+
     /* Color picker overlay */
     .cp-overlay {
       position: fixed;
@@ -975,6 +1053,18 @@
 </head>
 <body>
   <div class="toast" id="toast"></div>
+
+  <div class="update-banner" id="update-banner">
+    <div class="update-banner-text" id="update-banner-text">
+      <div class="ub-title">Update available</div>
+      <div class="ub-sub" id="update-banner-sub"></div>
+    </div>
+    <div class="update-progress hidden" id="update-progress">
+      <div class="update-progress-fill" id="update-progress-fill"></div>
+    </div>
+    <button class="update-banner-btn" id="update-banner-later">Later</button>
+    <button class="update-banner-btn primary" id="update-banner-action">Install</button>
+  </div>
   <!-- Color picker overlay (outside flyout so it isn't clipped) -->
   <div class="cp-overlay hidden" id="cp-overlay">
     <div class="color-picker" id="color-picker">
@@ -2214,18 +2304,81 @@
     renderAll();
     inputEl.focus();
 
-    // ── Auto-update check ──
+    // ── Auto-update check (prompt-before-install) ──
     // Pings the updater endpoint once per launch. If a newer signed bundle
-    // is published on GitHub Releases, it's downloaded and installed in the
-    // background; the next app launch runs the new version.
+    // is published on GitHub Releases, shows a banner asking the user to
+    // install. On install: downloads with a progress bar, then offers
+    // "Restart now" to relaunch into the new version.
     (async () => {
+      const banner   = document.getElementById('update-banner');
+      const subEl    = document.getElementById('update-banner-sub');
+      const progEl   = document.getElementById('update-progress');
+      const fillEl   = document.getElementById('update-progress-fill');
+      const laterBtn = document.getElementById('update-banner-later');
+      const actBtn   = document.getElementById('update-banner-action');
+
+      const showBanner = () => banner.classList.add('show');
+      const hideBanner = () => banner.classList.remove('show');
+
       try {
         const updater = window.__TAURI__ && window.__TAURI__.updater;
         if (!updater || !updater.check) return;
         const update = await updater.check();
-        if (update && update.available) {
-          await update.downloadAndInstall();
-        }
+        if (!update || !update.available) return;
+
+        subEl.textContent = `Version ${update.version} is available`;
+        showBanner();
+
+        laterBtn.addEventListener('click', hideBanner, { once: true });
+
+        actBtn.addEventListener('click', async () => {
+          actBtn.disabled = true;
+          laterBtn.disabled = true;
+          subEl.textContent = `Downloading v${update.version}…`;
+          progEl.classList.remove('hidden');
+
+          let downloaded = 0;
+          let total = 0;
+          try {
+            await update.downloadAndInstall((event) => {
+              switch (event.event) {
+                case 'Started':
+                  total = event.data.contentLength || 0;
+                  break;
+                case 'Progress':
+                  downloaded += event.data.chunkLength || 0;
+                  if (total > 0) {
+                    const pct = Math.min(100, (downloaded / total) * 100);
+                    fillEl.style.width = pct.toFixed(1) + '%';
+                  }
+                  break;
+                case 'Finished':
+                  fillEl.style.width = '100%';
+                  break;
+              }
+            });
+
+            // Install complete — swap UI to "restart" state
+            progEl.classList.add('hidden');
+            subEl.textContent = `Installed v${update.version} — restart to apply`;
+            laterBtn.textContent = 'Later';
+            laterBtn.disabled = false;
+            actBtn.textContent = 'Restart';
+            actBtn.disabled = false;
+
+            actBtn.onclick = async () => {
+              try {
+                await window.__TAURI__.process.relaunch();
+              } catch (e) { /* ignore */ }
+            };
+          } catch (err) {
+            progEl.classList.add('hidden');
+            subEl.textContent = 'Update failed — try again later';
+            actBtn.textContent = 'Dismiss';
+            actBtn.disabled = false;
+            actBtn.onclick = hideBanner;
+          }
+        }, { once: true });
       } catch (_) { /* offline or endpoint unreachable — ignore */ }
     })();
   </script>

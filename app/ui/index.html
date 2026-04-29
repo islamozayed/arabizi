@@ -1252,6 +1252,16 @@
                 <div class="toggle" id="startup-toggle"></div>
               </div>
             </div>
+            <div class="settings-subsec">
+              <div class="settings-section-label">About</div>
+              <div class="shortcut-row">
+                <div class="shortcut-current" id="app-version-row">
+                  <span class="shortcut-hint" id="app-version-text">Franconvert</span>
+                </div>
+                <button class="shortcut-record-btn" id="check-updates-btn">Check for updates</button>
+              </div>
+              <div class="shortcut-hint" id="update-status" style="margin-top: 6px; min-height: 14px;"></div>
+            </div>
           </div>
           <!-- Accessibility page -->
           <div class="settings-page hidden" id="page-accessibility">
@@ -2304,12 +2314,11 @@
     renderAll();
     inputEl.focus();
 
-    // ── Auto-update check (prompt-before-install) ──
-    // Pings the updater endpoint once per launch. If a newer signed bundle
-    // is published on GitHub Releases, shows a banner asking the user to
-    // install. On install: downloads with a progress bar, then offers
-    // "Restart now" to relaunch into the new version.
-    (async () => {
+    // ── Auto-update + manual "Check for updates" ──
+    // Pings the updater endpoint at launch and surfaces a banner with
+    // Install/Later if a new signed bundle is published. The same flow is
+    // exposed manually via the Check for updates button in System settings.
+    (() => {
       const banner   = document.getElementById('update-banner');
       const subEl    = document.getElementById('update-banner-sub');
       const progEl   = document.getElementById('update-progress');
@@ -2317,23 +2326,38 @@
       const laterBtn = document.getElementById('update-banner-later');
       const actBtn   = document.getElementById('update-banner-action');
 
-      const showBanner = () => banner.classList.add('show');
+      const versionText  = document.getElementById('app-version-text');
+      const checkBtn     = document.getElementById('check-updates-btn');
+      const statusEl     = document.getElementById('update-status');
+
       const hideBanner = () => banner.classList.remove('show');
+      // Reset banner DOM listeners by cloning — avoids stale handlers when
+      // the banner is shown more than once in a session.
+      const resetBanner = () => {
+        const newLater = laterBtn.cloneNode(true);
+        const newAct   = actBtn.cloneNode(true);
+        laterBtn.replaceWith(newLater);
+        actBtn.replaceWith(newAct);
+        newLater.textContent = 'Later';
+        newAct.textContent = 'Install';
+        newLater.disabled = false;
+        newAct.disabled = false;
+        progEl.classList.add('hidden');
+        fillEl.style.width = '0%';
+        return { later: newLater, act: newAct };
+      };
 
-      try {
-        const updater = window.__TAURI__ && window.__TAURI__.updater;
-        if (!updater || !updater.check) return;
-        const update = await updater.check();
-        if (!update || !update.available) return;
-
+      // Show the banner for an `Update` object returned from `updater.check()`.
+      const presentUpdate = (update) => {
+        const { later, act } = resetBanner();
         subEl.textContent = `Version ${update.version} is available`;
-        showBanner();
+        banner.classList.add('show');
 
-        laterBtn.addEventListener('click', hideBanner, { once: true });
+        later.addEventListener('click', hideBanner, { once: true });
 
-        actBtn.addEventListener('click', async () => {
-          actBtn.disabled = true;
-          laterBtn.disabled = true;
+        act.addEventListener('click', async () => {
+          act.disabled = true;
+          later.disabled = true;
           subEl.textContent = `Downloading v${update.version}…`;
           progEl.classList.remove('hidden');
 
@@ -2358,15 +2382,14 @@
               }
             });
 
-            // Install complete — swap UI to "restart" state
             progEl.classList.add('hidden');
             subEl.textContent = `Installed v${update.version} — restart to apply`;
-            laterBtn.textContent = 'Later';
-            laterBtn.disabled = false;
-            actBtn.textContent = 'Restart';
-            actBtn.disabled = false;
+            later.textContent = 'Later';
+            later.disabled = false;
+            act.textContent = 'Restart';
+            act.disabled = false;
 
-            actBtn.onclick = async () => {
+            act.onclick = async () => {
               try {
                 await window.__TAURI__.process.relaunch();
               } catch (e) { /* ignore */ }
@@ -2374,12 +2397,61 @@
           } catch (err) {
             progEl.classList.add('hidden');
             subEl.textContent = 'Update failed — try again later';
-            actBtn.textContent = 'Dismiss';
-            actBtn.disabled = false;
-            actBtn.onclick = hideBanner;
+            act.textContent = 'Dismiss';
+            act.disabled = false;
+            act.onclick = hideBanner;
           }
         }, { once: true });
-      } catch (_) { /* offline or endpoint unreachable — ignore */ }
+      };
+
+      // Run a check. `silent=true` swallows "no update / offline" cases
+      // (used at launch); `silent=false` shows status text in the settings
+      // panel (used by the manual button).
+      const runUpdateCheck = async (silent) => {
+        try {
+          const updater = window.__TAURI__ && window.__TAURI__.updater;
+          if (!updater || !updater.check) {
+            if (!silent) statusEl.textContent = 'Updater unavailable';
+            return;
+          }
+          if (!silent) statusEl.textContent = 'Checking…';
+          const update = await updater.check();
+          if (update && update.available) {
+            if (!silent) statusEl.textContent = '';
+            presentUpdate(update);
+          } else {
+            if (!silent) statusEl.textContent = "You're up to date";
+          }
+        } catch (_) {
+          if (!silent) statusEl.textContent = "Couldn't reach update server";
+        }
+      };
+
+      // Populate "Franconvert vX.Y.Z" in the About row.
+      (async () => {
+        try {
+          const v = await window.__TAURI__.app.getVersion();
+          versionText.textContent = `Franconvert v${v}`;
+        } catch (_) {
+          versionText.textContent = 'Franconvert';
+        }
+      })();
+
+      // Wire the manual button — debounced so rapid clicks don't fan out.
+      if (checkBtn) {
+        let inFlight = false;
+        checkBtn.addEventListener('click', async () => {
+          if (inFlight) return;
+          inFlight = true;
+          checkBtn.disabled = true;
+          await runUpdateCheck(false);
+          checkBtn.disabled = false;
+          inFlight = false;
+        });
+      }
+
+      // Auto-check on launch, silently.
+      runUpdateCheck(true);
     })();
   </script>
 </body>

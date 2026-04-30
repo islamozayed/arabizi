@@ -4,7 +4,44 @@ A small, keyboard-first desktop utility that converts Franco-Arabic (a.k.a. Arab
 
 Lives in the menu bar / system tray. Press a global shortcut, type, hit Enter, and the Arabic lands in the field you were focused on.
 
-Built with Tauri 2 + Rust. Runs on macOS and Windows.
+Built with Tauri 2 + Rust. Runs on macOS, Windows, and Linux.
+
+## Install
+
+Grab the latest installer for your platform from the [**Releases page**](https://github.com/islamozayed/arabizi/releases/latest).
+
+### macOS (Apple Silicon)
+
+1. Download `Franconvert_<version>_aarch64.dmg`
+2. Open the DMG and drag **Franconvert** into Applications
+3. **First launch only:** macOS will warn that it can't verify the developer. **Right-click the app → Open → Open** in the second dialog. macOS remembers your choice and won't ask again.
+4. The app lives in your menu bar — press `⌘⇧A` to summon it
+
+> _Why the warning?_ Franconvert is signed with a Developer ID but not yet notarized by Apple. Notarization will be added in a future release; the right-click bypass is a one-time step.
+
+### Windows
+
+1. Download `Franconvert_<version>_x64-setup.exe` (or the `.msi` if you prefer)
+2. Run the installer
+3. Press `Ctrl+Shift+A` anywhere to summon the overlay
+
+If Windows SmartScreen flags the installer ("Windows protected your PC"), click **More info → Run anyway**.
+
+### Linux
+
+Three formats — pick the one that matches your distro:
+
+- **AppImage** (any distro): download `franconvert_<version>_amd64.AppImage`, `chmod +x` it, and run it
+- **Debian / Ubuntu**: download `Franconvert_<version>_amd64.deb` and `sudo apt install ./Franconvert_<version>_amd64.deb`
+- **Fedora / RHEL**: download `Franconvert-<version>-1.x86_64.rpm` and `sudo dnf install ./Franconvert-<version>-1.x86_64.rpm`
+
+Press `Ctrl+Shift+A` to summon the overlay. Note: tray icon visibility depends on your desktop environment.
+
+### Updates
+
+Franconvert checks for updates on each launch. When a new release is published, you'll see a banner with **Install** / **Later** — clicking Install downloads + verifies the new version in the background, then offers a one-click Restart. You can also manually check anytime via **Settings → System → Check for updates**.
+
+
 
 ## Features
 

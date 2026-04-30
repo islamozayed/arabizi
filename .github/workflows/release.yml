@@ -46,34 +46,22 @@ jobs:
         with:
           workspaces: './ -> target'
 
-      # Tauri reads the App Store Connect API key from a file path, so we
-      # materialize the .p8 contents stored in secrets to a tempfile and
-      # expose its path via GITHUB_ENV for the build step.
-      - name: Write Apple API key
-        if: matrix.platform == 'macos-latest'
-        env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/private_keys"
-          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/private_keys/AuthKey.p8"
-          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/private_keys/AuthKey.p8" >> "$GITHUB_ENV"
-
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Apple codesigning + notarization via App Store Connect API key
-          # (macOS only — Windows/Linux jobs ignore these). Tauri's
-          # APPLE_API_KEY env var holds the 10-char Key ID, NOT the .p8
-          # contents — those go to APPLE_API_KEY_PATH (set in prior step).
+          # macOS codesigning only — notarization is intentionally skipped
+          # because Tauri's bundler hits spurious URLSession -1009 errors
+          # during the notary polling loop on GitHub-hosted runners. Builds
+          # are still signed with the Developer ID cert (Gatekeeper shows
+          # an "unidentified developer" prompt on first launch; right-click
+          # → Open bypasses it). v0.1.1 will reintroduce notarization via
+          # an external xcrun notarytool step.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ./app
           tagName: ${{ github.ref_name }}

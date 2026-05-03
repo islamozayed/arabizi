@@ -72,6 +72,33 @@ pub const AMBIGUOUS_CONSONANTS: &[(&str, &str, &[&str])] = &[
     ("ch", "ش", &["تش"]),
 ];
 
+/// Wider table used ONLY by the user-driven letter picker (Cmd+G).
+/// Includes everything in `AMBIGUOUS_CONSONANTS` plus vowel/hamza alternatives
+/// the user might want to force when the auto-suggester guessed wrong.
+/// NOT used for auto-generated swap candidates (would blow up the ranking).
+pub const PICKER_ALTERNATIVES: &[(&str, &str, &[&str])] = &[
+    // Mirror of AMBIGUOUS_CONSONANTS, with extra alts where useful.
+    ("s",  "س", &["ص", "ث"]),
+    ("t",  "ت", &["ط", "ث", "ة"]),
+    ("d",  "د", &["ض", "ذ"]),
+    ("z",  "ز", &["ظ", "ذ"]),
+    ("h",  "ه", &["ح", "ة"]),
+    ("g",  "ج", &["غ", "ق"]),
+    ("k",  "ك", &["ق"]),
+    ("th", "ث", &["ذ"]),
+    ("dh", "ذ", &["ض", "ظ"]),
+    ("ch", "ش", &["تش"]),
+    // Vowels and hamza — picker-only.
+    ("aa", "ا", &["ى", "آ"]),
+    ("ee", "ي", &["ئ"]),
+    ("a",  "ا", &["ع", "أ", "إ", "ة"]),
+    ("e",  "ا", &["ع", "ي", "ة", "إ"]),
+    ("i",  "ي", &["ع", "ئ"]),
+    ("o",  "و", &["ؤ"]),
+    ("u",  "و", &["ؤ"]),
+    ("2",  "ء", &["أ", "إ", "ؤ", "ئ"]),
+];
+
 /// Long vowel patterns
 pub const LONG_VOWEL_MAPPINGS: &[(&str, &str)] = &[
     ("aa", "ا"),

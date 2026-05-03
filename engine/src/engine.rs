@@ -5,7 +5,8 @@ use crate::dictionary::build_dictionary;
 use crate::emoji::{build_emoji_map, build_emoticon_map};
 use crate::frequency::FrequencyList;
 use crate::mappings::{
-    is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS, SHORT_VOWELS,
+    is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS,
+    PICKER_ALTERNATIVES, SHORT_VOWELS,
 };
 use crate::user_prefs::UserPreferences;
 
@@ -148,6 +149,263 @@ impl TransliterationEngine {
         self.transliterate_word_ranked(word, None)
     }
 
+    /// Scan a word and return one slot per recognized Latin letter token —
+    /// consonants (incl. digraphs), vowels, and number-letters. Non-overridable
+    /// tokens (like 'b' or '7') still get a slot with an empty `alternatives`
+    /// list so the picker can still target them and show "no swap available".
+    /// Slots are in left-to-right order, indexed by their starting char position
+    /// in the lowercased input.
+    pub fn letter_slots(&self, word: &str) -> Vec<LetterSlot> {
+        let word = word.to_lowercase();
+        let chars: Vec<char> = word.chars().collect();
+        let len = chars.len();
+        let mut slots = Vec::new();
+        let mut pos = 0;
+
+        while pos < len {
+            if chars[pos] == '-' {
+                pos += 1;
+                continue;
+            }
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
+            let remaining: String = chars[pos..].iter().collect();
+
+            // 1. Try the wider picker table first (covers consonants + vowels + 2)
+            let mut matched_pattern: Option<&'static str> = None;
+            for (pattern, primary, alternatives) in PICKER_ALTERNATIVES {
+                if has_separator && pattern.len() > 1 {
+                    continue;
+                }
+                if remaining.starts_with(pattern) {
+                    slots.push(LetterSlot {
+                        pos,
+                        pattern: (*pattern).to_string(),
+                        primary: (*primary).to_string(),
+                        alternatives: alternatives.iter().map(|s| (*s).to_string()).collect(),
+                    });
+                    matched_pattern = Some(*pattern);
+                    break;
+                }
+            }
+            if let Some(p) = matched_pattern {
+                pos += p.len();
+                if has_separator && pos < len && chars[pos] == '-' {
+                    pos += 1;
+                }
+                continue;
+            }
+
+            // 2. Fall back to consonant table — token has no alternatives.
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, primary)) = Self::match_consonant_max(&remaining, max_len) {
+                slots.push(LetterSlot {
+                    pos,
+                    pattern: pattern.to_string(),
+                    primary: primary.to_string(),
+                    alternatives: Vec::new(),
+                });
+                pos += pattern.len();
+                if has_separator && pos < len && chars[pos] == '-' {
+                    pos += 1;
+                }
+                continue;
+            }
+
+            // 3. Long vowel without an alternative (rare given step 1).
+            if let Some((pattern, primary)) = Self::match_long_vowel(&remaining) {
+                slots.push(LetterSlot {
+                    pos,
+                    pattern: pattern.to_string(),
+                    primary: primary.to_string(),
+                    alternatives: Vec::new(),
+                });
+                pos += pattern.len();
+                continue;
+            }
+
+            // 4. Unmapped char — skip without a slot.
+            pos += 1;
+        }
+        slots
+    }
+
+    /// Transliterate a single word, applying per-position Arabic-letter overrides
+    /// (keyed by Latin char position from `letter_slots`). The override-derived
+    /// candidate is pinned to the top of the returned list.
+    ///
+    /// Overrides may target any letter token (consonant, vowel, or hamza) — not
+    /// just the auto-suggester's ambiguous-consonant set.
+    pub fn transliterate_word_with_overrides(
+        &self,
+        word: &str,
+        overrides_by_pos: &HashMap<usize, String>,
+        prefs: Option<&UserPreferences>,
+    ) -> Vec<String> {
+        let word_lower = word.to_lowercase();
+        let mut candidates = self.transliterate_word_ranked(&word_lower, prefs);
+
+        if overrides_by_pos.is_empty() {
+            return candidates;
+        }
+
+        // Validate overrides against the slot table — drop any whose value isn't
+        // a legal alternative (or the primary) for the slot at that position.
+        // Picking the primary is *not* a no-op: for vowels in middle position the
+        // rule-based path would drop the letter, and the user's explicit pick
+        // must force it to appear.
+        let slots = self.letter_slots(&word_lower);
+        let mut valid: HashMap<usize, &str> = HashMap::new();
+        for slot in &slots {
+            if let Some(choice) = overrides_by_pos.get(&slot.pos) {
+                for (pattern, primary, alternatives) in PICKER_ALTERNATIVES {
+                    if *pattern == slot.pattern {
+                        if *primary == choice.as_str() {
+                            valid.insert(slot.pos, *primary);
+                        } else {
+                            for alt in *alternatives {
+                                if *alt == choice.as_str() {
+                                    valid.insert(slot.pos, *alt);
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if !valid.is_empty() {
+            let pinned = self.rule_based_with_overrides(&word_lower, &valid);
+            candidates.retain(|c| c != &pinned);
+            candidates.insert(0, pinned);
+            candidates.truncate(8);
+        }
+
+        candidates
+    }
+
+    /// Like `rule_based_transliterate(DropMiddle)` but emits an override letter
+    /// directly when a Latin position has one. Picker overrides bypass the
+    /// vowel-drop and taa-marbuta context rules — the user's choice always wins.
+    fn rule_based_with_overrides(
+        &self,
+        word: &str,
+        overrides: &HashMap<usize, &str>,
+    ) -> String {
+        let chars: Vec<char> = word.chars().collect();
+        let len = chars.len();
+        let mut result = String::new();
+        let mut pos = 0;
+
+        while pos < len {
+            // Override at this position wins. Advance by the matched pattern length.
+            if let Some(arabic) = overrides.get(&pos) {
+                let remaining: String = chars[pos..].iter().collect();
+                let mut advance = 1;
+                for (pattern, _, _) in PICKER_ALTERNATIVES {
+                    if remaining.starts_with(pattern) {
+                        advance = pattern.len();
+                        break;
+                    }
+                }
+                result.push_str(arabic);
+                pos += advance;
+                continue;
+            }
+
+            // No override — fall through to the normal DropMiddle behavior.
+            if chars[pos] == '2' {
+                result.push_str(Self::resolve_hamza(&chars, pos));
+                pos += 1;
+                continue;
+            }
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
+            let remaining: String = chars[pos..].iter().collect();
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, arabic)) = Self::match_consonant_max(&remaining, max_len) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                if has_separator && pos < len && chars[pos] == '-' {
+                    pos += 1;
+                }
+                continue;
+            }
+            if chars[pos] == '-' {
+                pos += 1;
+                continue;
+            }
+            if let Some((pattern, arabic)) = Self::match_long_vowel(&remaining) {
+                result.push_str(arabic);
+                pos += pattern.len();
+                continue;
+            }
+            if is_vowel_char(chars[pos]) {
+                let at_start = pos == 0;
+                let at_end = pos == len - 1;
+                let before_final = pos + 1 == len - 1;
+                let is_taa_marbuta = at_end
+                    && (chars[pos] == 'a' || chars[pos] == 'e')
+                    && pos > 0
+                    && !is_vowel_char(chars[pos - 1]);
+                if at_start {
+                    Self::push_initial_vowel(&mut result, chars[pos]);
+                } else if is_taa_marbuta {
+                    result.push_str("ة");
+                } else if at_end || before_final {
+                    if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
+                        result.push_str(arabic);
+                    }
+                }
+                pos += 1;
+                continue;
+            }
+            result.push(chars[pos]);
+            pos += 1;
+        }
+
+        result
+    }
+
+    /// Shared scan used by `generate_consonant_swaps` and the override path.
+    fn scan_ambiguous(&self, word: &str) -> Vec<(usize, &'static str, &'static [&'static str])> {
+        let chars: Vec<char> = word.chars().collect();
+        let len = chars.len();
+        let mut out = Vec::new();
+        let mut pos = 0;
+        while pos < len {
+            if chars[pos] == '-' {
+                pos += 1;
+                continue;
+            }
+            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
+            let remaining: String = chars[pos..].iter().collect();
+            let mut found = false;
+            for (pattern, _primary, alternatives) in AMBIGUOUS_CONSONANTS {
+                if has_separator && pattern.len() > 1 {
+                    continue;
+                }
+                if remaining.starts_with(pattern) {
+                    out.push((pos, *pattern, *alternatives));
+                    pos += pattern.len();
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                let max_len = if has_separator { 1 } else { usize::MAX };
+                if let Some((pattern, _)) = Self::match_consonant_max(&remaining, max_len) {
+                    pos += pattern.len();
+                } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
+                    pos += pattern.len();
+                } else {
+                    pos += 1;
+                }
+            }
+        }
+        out
+    }
+
     /// Transliterate a single word with optional user preference ranking.
     pub fn transliterate_word_ranked(&self, word: &str, prefs: Option<&UserPreferences>) -> Vec<String> {
         let word = word.to_lowercase();
@@ -198,6 +456,18 @@ impl TransliterationEngine {
         for swap in swaps {
             if !candidates.contains(&swap) {
                 candidates.push(swap);
+            }
+        }
+
+        // 6b. Inject any previously-confirmed candidates the user has selected
+        // for this input. These wouldn't otherwise be generated when they
+        // require multi-letter combinations the auto-swap step never emits
+        // (e.g. picker-derived "بالظبط" from "baalzbt").
+        if let Some(prefs) = prefs {
+            for known in prefs.known_candidates(&word) {
+                if !candidates.contains(&known) {
+                    candidates.push(known);
+                }
             }
         }
 
@@ -321,44 +591,10 @@ impl TransliterationEngine {
     /// 1. Swap one instance at a time (e.g. لذيز for "lazeez")
     /// 2. Swap ALL instances of the same pattern at once (e.g. لذيذ for "lazeez")
     fn generate_consonant_swaps(&self, word: &str) -> Vec<String> {
-        let chars: Vec<char> = word.chars().collect();
-        let len = chars.len();
         let mut results = Vec::new();
 
-        // First, find all ambiguous positions: (position, pattern, alternatives)
-        let mut ambiguous_positions: Vec<(usize, &str, &[&str])> = Vec::new();
-        let mut pos = 0;
-        while pos < len {
-            // Skip digraph separator
-            if chars[pos] == '-' {
-                pos += 1;
-                continue;
-            }
-            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
-            let remaining: String = chars[pos..].iter().collect();
-            let mut found = false;
-            for (pattern, _primary, alternatives) in AMBIGUOUS_CONSONANTS {
-                if has_separator && pattern.len() > 1 {
-                    continue; // separator breaks this digraph
-                }
-                if remaining.starts_with(pattern) {
-                    ambiguous_positions.push((pos, pattern, alternatives));
-                    pos += pattern.len();
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                let max_len = if has_separator { 1 } else { usize::MAX };
-                if let Some((pattern, _)) = Self::match_consonant_max(&remaining, max_len) {
-                    pos += pattern.len();
-                } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
-                    pos += pattern.len();
-                } else {
-                    pos += 1;
-                }
-            }
-        }
+        // Find all ambiguous positions: (position, pattern, alternatives)
+        let ambiguous_positions = self.scan_ambiguous(word);
 
         // Strategy 1: Swap one at a time
         for (i, &(_swap_pos, _pattern, alternatives)) in ambiguous_positions.iter().enumerate() {
@@ -682,6 +918,17 @@ impl TransliterationEngine {
     }
 }
 
+/// A position in the Latin input where the user can pick from multiple Arabic
+/// letters. `pos` is the starting char index of the matched pattern in the
+/// lowercased input; `pattern` is the Latin sequence (e.g. "z", "th").
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LetterSlot {
+    pub pos: usize,
+    pub pattern: String,
+    pub primary: String,
+    pub alternatives: Vec<String>,
+}
+
 #[derive(Clone, Copy)]
 enum VowelMode {
     /// Drop short vowels between consonants, keep at start/end/before-final
@@ -948,6 +1195,77 @@ mod tests {
         let results = e.transliterate_word("masa2");
         assert!(results.iter().any(|r| r.contains("ء")),
             "Expected ء (standalone hamza) for 'masa2', got {:?}", results);
+    }
+
+    #[test]
+    fn letter_slots_finds_ambiguous_consonants() {
+        let e = engine();
+        let slots = e.letter_slots("baalzbt");
+        // Expect slots for: b (no, primary only — wait, b is not ambiguous)
+        // Ambiguous patterns in "baalzbt": z (alts ظ ذ), t (alts ط ث), and also b/h/etc are not ambiguous
+        let patterns: Vec<&str> = slots.iter().map(|s| s.pattern.as_str()).collect();
+        assert!(patterns.contains(&"z"), "expected 'z' slot in {:?}", patterns);
+        assert!(patterns.contains(&"t"), "expected 't' slot in {:?}", patterns);
+    }
+
+    #[test]
+    fn override_pins_balzbt_to_top() {
+        let e = engine();
+        let slots = e.letter_slots("baalzbt");
+        let z_slot = slots.iter().find(|s| s.pattern == "z").unwrap();
+        let t_slot = slots.iter().find(|s| s.pattern == "t").unwrap();
+        let mut overrides = HashMap::new();
+        overrides.insert(z_slot.pos, "ظ".to_string());
+        overrides.insert(t_slot.pos, "ط".to_string());
+        let results = e.transliterate_word_with_overrides("baalzbt", &overrides, None);
+        assert_eq!(results[0], "بالظبط",
+            "expected بالظبط pinned at top, got {:?}", results);
+    }
+
+    #[test]
+    fn letter_slots_includes_every_letter_token() {
+        let e = engine();
+        let slots = e.letter_slots("baalzbt");
+        // b, aa, l, z, b, t  → 6 tokens
+        let patterns: Vec<&str> = slots.iter().map(|s| s.pattern.as_str()).collect();
+        assert_eq!(patterns, vec!["b", "aa", "l", "z", "b", "t"]);
+        // Every consonant gets a slot, even if alternatives is empty (b, l).
+        let b = slots.iter().find(|s| s.pattern == "b").unwrap();
+        assert!(b.alternatives.is_empty(), "b should have no alternatives");
+        let aa = slots.iter().find(|s| s.pattern == "aa").unwrap();
+        assert!(!aa.alternatives.is_empty(), "aa should offer ى/آ alternatives");
+    }
+
+    #[test]
+    fn override_for_vowel_works() {
+        let e = engine();
+        let slots = e.letter_slots("3ali");
+        // The 'a' slot should be overridable to ع
+        let a_slot = slots.iter().find(|s| s.pattern == "a").unwrap();
+        let mut overrides = HashMap::new();
+        overrides.insert(a_slot.pos, "ع".to_string());
+        let results = e.transliterate_word_with_overrides("3ali", &overrides, None);
+        // First candidate should contain two ع (the 3 + the override)
+        assert!(results[0].matches("ع").count() >= 2,
+            "expected two ع in pinned candidate, got {}", results[0]);
+    }
+
+    #[test]
+    fn user_pref_resurfaces_picker_derived_candidate() {
+        let e = engine();
+        let mut prefs = UserPreferences::new();
+        prefs.record("baalzbt", "بالظبط");
+        let results = e.transliterate_word_ranked("baalzbt", Some(&prefs));
+        assert_eq!(results[0], "بالظبط",
+            "expected previously-confirmed بالظبط on top, got {:?}", results);
+    }
+
+    #[test]
+    fn override_with_no_changes_returns_normal_ranking() {
+        let e = engine();
+        let baseline = e.transliterate_word_ranked("salam", None);
+        let with_empty = e.transliterate_word_with_overrides("salam", &HashMap::new(), None);
+        assert_eq!(baseline, with_empty);
     }
 
     #[test]

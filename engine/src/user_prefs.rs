@@ -30,6 +30,18 @@ impl UserPreferences {
             .unwrap_or(0)
     }
 
+    /// All Arabic candidates the user has previously chosen for `input`.
+    /// Used by the engine to inject remembered candidates into the ranking
+    /// pool — important when the rule-based generator doesn't produce them
+    /// (e.g. picker-derived combinations like بالظبط that need multi-letter
+    /// overrides the auto-swap step never emits).
+    pub fn known_candidates(&self, input: &str) -> Vec<String> {
+        self.selections
+            .get(&input.to_lowercase())
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
     /// Serialize to JSON string for persistence.
     pub fn to_json(&self) -> String {
         let mut out = String::from("{");

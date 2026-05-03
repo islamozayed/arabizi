@@ -1,0 +1,16 @@
+{
+  "versions": [
+    {
+      "version": "0.2.0",
+      "date": "2026-05-03",
+      "title": "Letter picker — swap a single Arabic letter without retyping",
+      "items": [
+        "Press <kbd>Cmd</kbd>+<kbd>G</kbd> (or <kbd>Ctrl</kbd>+<kbd>G</kbd>) on a suggestion to open a letter picker.",
+        "Pick a different Arabic letter for any ambiguous Latin consonant (z → ز/ظ/ذ, t → ت/ط/ث, etc.).",
+        "Use <kbd>Tab</kbd> to cycle between letter positions, arrows to choose, <kbd>Enter</kbd> to apply.",
+        "Your choice is locked to the suggestion and survives further edits to the rest of the word.",
+        "Confirmed picks are remembered, so next time the right spelling shows up first."
+      ]
+    }
+  ]
+}

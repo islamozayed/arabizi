@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use arabizi_engine::{TransliterationEngine, UserPreferences};
+use arabizi_engine::{LetterSlot, TransliterationEngine, UserPreferences};
+use std::collections::HashMap;
 #[cfg(not(target_os = "macos"))]
 use enigo::{Enigo, Key, Keyboard, Settings, Direction};
 use serde::Serialize;
@@ -124,6 +125,103 @@ fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> Tra
                 emojis,
                 selected: 0,
             }
+        })
+        .collect();
+
+    let combined = words
+        .iter()
+        .map(|w| w.candidates.first().map(|s| s.as_str()).unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    TransliterateResult { combined, words }
+}
+
+/// Mirror of `arabizi_engine::LetterSlot` with serde derives for IPC.
+#[derive(Serialize, Clone)]
+struct LetterSlotDto {
+    pos: usize,
+    pattern: String,
+    primary: String,
+    alternatives: Vec<String>,
+}
+
+impl From<LetterSlot> for LetterSlotDto {
+    fn from(s: LetterSlot) -> Self {
+        Self {
+            pos: s.pos,
+            pattern: s.pattern,
+            primary: s.primary,
+            alternatives: s.alternatives,
+        }
+    }
+}
+
+/// Return the ambiguous Latin-letter positions in `word` and the Arabic
+/// alternatives the user can pick for each. Used by the Cmd+G letter picker.
+#[tauri::command]
+fn letter_slots(state: tauri::State<'_, Mutex<AppState>>, word: String) -> Vec<LetterSlotDto> {
+    let state = state.lock().unwrap();
+    state
+        .engine
+        .letter_slots(&word)
+        .into_iter()
+        .map(LetterSlotDto::from)
+        .collect()
+}
+
+/// Recompute candidates for `input` with per-position Arabic-letter overrides
+/// (keyed by Latin char position). Mirrors the shape of `transliterate` but
+/// applies the picker's locked choices and pins the result at the top.
+#[tauri::command]
+fn transliterate_with_overrides(
+    state: tauri::State<'_, Mutex<AppState>>,
+    input: String,
+    overrides: HashMap<usize, String>,
+) -> TransliterateResult {
+    let state = state.lock().unwrap();
+    let input_lower = input.trim().to_lowercase();
+
+    if input_lower.is_empty() {
+        return TransliterateResult { combined: String::new(), words: vec![] };
+    }
+
+    // Overrides only apply to single-word input — the picker is per-word.
+    // For multi-word inputs we fall back to the normal path on the non-active words.
+    let parts: Vec<&str> = input_lower.split_whitespace().collect();
+    let words: Vec<WordResult> = parts
+        .iter()
+        .map(|w| {
+            if let Some(emojis) = state.engine.lookup_emoticon(w) {
+                return WordResult {
+                    input: w.to_string(),
+                    candidates: emojis,
+                    emojis: vec![],
+                    selected: 0,
+                };
+            }
+            let (prefix, core, suffix) = extract_punctuation(w);
+            if core.is_empty() {
+                return WordResult {
+                    input: w.to_string(),
+                    candidates: vec![format!("{}{}", prefix, suffix)],
+                    emojis: vec![],
+                    selected: 0,
+                };
+            }
+            // Apply overrides only when the word matches the full input
+            // (avoids cross-applying positions to neighbouring words).
+            let candidates_raw = if parts.len() == 1 {
+                state.engine.transliterate_word_with_overrides(&core, &overrides, Some(&state.prefs))
+            } else {
+                state.engine.transliterate_word_ranked(&core, Some(&state.prefs))
+            };
+            let emojis = state.engine.lookup_emojis(&candidates_raw);
+            let candidates = candidates_raw
+                .into_iter()
+                .map(|c| format!("{}{}{}", prefix, c, suffix))
+                .collect();
+            WordResult { input: w.to_string(), candidates, emojis, selected: 0 }
         })
         .collect();
 
@@ -949,6 +1047,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             transliterate,
+            transliterate_with_overrides,
+            letter_slots,
             paste_from_clipboard,
             hide_and_paste,
             record_selection,

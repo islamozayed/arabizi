@@ -333,6 +333,178 @@
       outline: 1px solid var(--hint-example-outline);
     }
 
+    /* ── Letter picker (Cmd+G) ── */
+    .suggestion {
+      position: relative;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .suggestion .lock-badge {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--text-tertiary);
+      pointer-events: none;
+    }
+    .suggestion.selected .lock-badge { color: #fff; }
+
+    .letter-picker {
+      position: absolute;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-surface);
+      border: 1px solid var(--outline);
+      border-radius: var(--radius);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      direction: rtl;
+      font: 16px/1 var(--font-ar);
+      color: var(--text-primary);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .letter-picker.hidden { display: none; }
+    .letter-picker .lp-chip {
+      min-width: 24px;
+      padding: 5px 8px;
+      border-radius: 4px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.06s;
+    }
+    .letter-picker .lp-chip:hover { background: var(--item-hover); }
+    .letter-picker .lp-chip.selected {
+      background: var(--accent);
+      color: #fff;
+      outline: 1px solid var(--hint-example-outline);
+    }
+    .letter-picker .lp-chip.disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    .letter-picker .lp-chip.disabled:hover { background: transparent; }
+    .letter-picker .lp-latin {
+      font: 11px/1 var(--font);
+      color: var(--text-tertiary);
+      direction: ltr;
+      padding: 0 6px 0 4px;
+      letter-spacing: 0.04em;
+    }
+    .letter-picker .lp-empty {
+      font: 11px/1 var(--font);
+      color: var(--text-tertiary);
+      padding: 0 6px;
+    }
+
+    /* ── Cmd+G hover tip ── */
+    .cmdg-tip {
+      position: absolute;
+      z-index: 60;
+      background: var(--panel-bg, rgba(40,40,42,0.98));
+      border: 1px solid var(--panel-border, rgba(255,255,255,0.08));
+      color: var(--text-primary);
+      padding: 6px 10px;
+      border-radius: 8px;
+      font: 12px/1.3 var(--font-ar);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(2px);
+      transition: opacity 0.12s, transform 0.12s;
+      pointer-events: none;
+      max-width: 220px;
+    }
+    .cmdg-tip.show {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .cmdg-tip kbd {
+      font: 11px/1 var(--font-ar);
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 4px;
+      padding: 2px 4px;
+    }
+    .cmdg-tip .cmdg-tip-dismiss {
+      background: none;
+      border: none;
+      color: inherit;
+      opacity: 0.55;
+      cursor: pointer;
+      font-size: 11px;
+      padding: 0;
+      margin-left: 2px;
+    }
+    .cmdg-tip .cmdg-tip-dismiss:hover { opacity: 1; }
+
+    /* ── Changelog modal ── */
+    .changelog-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      background: rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .changelog-overlay.hidden { display: none; }
+    .changelog-modal {
+      width: 100%;
+      max-width: 380px;
+      max-height: 80vh;
+      background: var(--bg-primary, #1a1a1c);
+      border: 1px solid var(--panel-border, rgba(255,255,255,0.08));
+      border-radius: 12px;
+      padding: 18px 20px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    }
+    .changelog-modal h2 {
+      font: 600 14px/1.2 var(--font-ar);
+      color: var(--text-primary);
+      margin: 0;
+    }
+    .changelog-modal .changelog-version {
+      font: 11px/1 var(--font-ar);
+      color: var(--text-secondary, rgba(255,255,255,0.55));
+    }
+    .changelog-modal .changelog-body {
+      font: 12px/1.5 var(--font-ar);
+      color: var(--text-primary);
+      overflow-y: auto;
+      white-space: pre-wrap;
+      flex: 1;
+    }
+    .changelog-modal .changelog-body ul { padding-inline-start: 18px; margin: 4px 0; }
+    .changelog-modal .changelog-body li { margin: 2px 0; }
+    .changelog-modal .changelog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .changelog-modal button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font: 12px/1 var(--font-ar);
+      cursor: pointer;
+    }
+
     .preview-panel {
       flex: 1;
       gap: 10px;
@@ -1053,6 +1225,24 @@
 </head>
 <body>
   <div class="toast" id="toast"></div>
+
+  <!-- Letter picker (Cmd+G) — anchored to the suggestions panel; populated by JS -->
+  <div class="letter-picker hidden" id="letter-picker" role="listbox" aria-label="Letter alternatives"></div>
+
+  <!-- Hover tip explaining Cmd+G -->
+  <div class="cmdg-tip" id="cmdg-tip" role="tooltip"></div>
+
+  <!-- Changelog modal shown after auto-update relaunch -->
+  <div class="changelog-overlay hidden" id="changelog-overlay">
+    <div class="changelog-modal" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
+      <h2 id="changelog-title">What's new</h2>
+      <div class="changelog-version" id="changelog-version"></div>
+      <div class="changelog-body" id="changelog-body"></div>
+      <div class="changelog-actions">
+        <button id="changelog-close-btn">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <div class="update-banner" id="update-banner">
     <div class="update-banner-text" id="update-banner-text">
@@ -1913,6 +2103,9 @@
     let debounce;
     inputEl.addEventListener('input', () => {
       updateInputHint();
+      // Typing kills any pending tip — slots may have shifted.
+      clearTimeout(cmdgKbdTimer);
+      hideCmdgTip();
       clearTimeout(debounce);
       debounce = setTimeout(async () => {
         const raw = inputEl.value;
@@ -1928,7 +2121,16 @@
           return;
         }
 
-        const result = await invoke('transliterate', { input: currentInput });
+        // Reconcile any locked letter picks against the new input (drops
+        // overrides whose anchor position no longer matches a slot of the
+        // same Latin pattern).
+        await reconcileOverrides();
+        // Picker open while typing → close it; the slots may have shifted.
+        if (pickerOpen) closePicker();
+
+        const result = hasOverrides()
+          ? await invoke('transliterate_with_overrides', { input: currentInput, overrides: letterOverrides })
+          : await invoke('transliterate', { input: currentInput });
         if (result.words.length > 0) {
           if (editingWordIdx < 0) {
             while (result.words.length > 1) {
@@ -1957,6 +2159,70 @@
 
     // ── Keyboard ──
     inputEl.addEventListener('keydown', async (e) => {
+      // Cmd+G (macOS) / Ctrl+G (Win/Linux): open or cycle the letter picker.
+      // Captured early so it wins against any browser default.
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        if (currentInput) await openPicker();
+        return;
+      }
+
+      // Cmd+Z / Ctrl+Z: if we have picker history, undo the last picker action
+      // instead of the input field's default (which would delete characters
+      // from the word the user is composing).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        if (pickerHistory.length > 0) {
+          e.preventDefault();
+          letterOverrides = pickerHistory.pop();
+          if (pickerOpen) closePicker();
+          await refreshSuggestions();
+          return;
+        }
+        // No picker history — fall through to native input undo.
+      }
+
+      // Picker-mode key handling: arrows/tab/enter operate on the picker
+      // instead of the suggestion list.
+      if (pickerOpen) {
+        const slot = letterSlots[pickerSlotIdx];
+        const altCount = slot ? slot.alternatives.length : 0;
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          e.preventDefault();
+          if (altCount > 0) {
+            const total = 1 + altCount;
+            // RTL picker: ArrowRight moves visually rightward (toward lower index).
+            const dir = e.key === 'ArrowRight' ? -1 : 1;
+            pickerAltIdx = (pickerAltIdx + dir + total) % total;
+            renderPicker();
+          }
+          return;
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          if (letterSlots.length > 1) {
+            const dir = e.shiftKey ? 1 : -1;
+            pickerSlotIdx = (pickerSlotIdx + dir + letterSlots.length) % letterSlots.length;
+            const next = letterSlots[pickerSlotIdx];
+            const current = letterOverrides[next.pos] || next.primary;
+            const chips = [next.primary, ...next.alternatives];
+            pickerAltIdx = Math.max(0, chips.indexOf(current));
+            renderPicker();
+          }
+          return;
+        }
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (altCount > 0) await commitPickerSelection();
+          else closePicker();
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closePicker();
+          return;
+        }
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         if (settingsOpen) {
@@ -1995,6 +2261,7 @@
           }
           renderSuggestions();
           renderPreview();
+          scheduleCmdgTipForSelected();
         }
         return;
       }
@@ -2018,6 +2285,7 @@
           }
           renderSuggestions();
           renderPreview();
+          scheduleCmdgTipForSelected();
         }
         return;
       }
@@ -2158,6 +2426,10 @@
       selectedIdx = 0;
       emojiMode = false;
       selectedEmojiIdx = 0;
+      // The lock dies with the word; next word starts fresh.
+      clearOverrides();
+      closePicker();
+      hideCmdgTip();
       updateInputHint();
       renderAll();
       inputEl.focus();
@@ -2261,8 +2533,11 @@
         : '';
 
       let html = '';
+      const showLock = hasOverrides();
       currentCandidates.forEach((c, i) => {
+        const lock = (showLock && i === 0) ? lockBadgeSvg : '';
         html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})">
+          ${lock}
           <div class="ar">${c}</div>
         </div>`;
         if (i === 1) html += emojiHtml;
@@ -2313,6 +2588,363 @@
     initAccessibility();
     renderAll();
     inputEl.focus();
+    // Show changelog on first launch after a version bump (no-op on fresh install).
+    maybeShowChangelog();
+
+    // ── Letter picker (Cmd+G) ───────────────────────────────────────────────
+    // Lets the user swap a single Arabic letter for one of its alternates
+    // (z → ظ, t → ط, …) without retyping. Picking implicitly locks the
+    // resulting candidate to the top of the suggestions list and the override
+    // is re-applied on every keystroke until the prefix it anchors to is
+    // edited away.
+    const pickerEl = document.getElementById('letter-picker');
+    let letterSlots = [];          // current ambiguous Latin positions
+    let letterOverrides = {};      // { latinPos: arabicLetter }
+    let pickerHistory = [];        // stack of letterOverrides snapshots for Cmd+Z
+    let pickerOpen = false;
+    let pickerSlotIdx = 0;         // which entry in letterSlots is active
+    let pickerAltIdx = 0;          // which chip is highlighted
+    // Phosphor "Lock" (regular weight) — fill follows currentColor, so the badge
+    // tracks light/dark theme via .suggestion .lock-badge { color: ... }.
+    let lockBadgeSvg = '<svg class="lock-badge" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true"><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Zm-68-56a12,12,0,1,1-12-12A12,12,0,0,1,140,152Z"/></svg>';
+
+    function hasOverrides() {
+      return Object.keys(letterOverrides).length > 0;
+    }
+
+    function clearOverrides() {
+      letterOverrides = {};
+      letterSlots = [];
+      pickerHistory = [];
+    }
+
+    // Drop overrides whose position no longer corresponds to a slot with the
+    // same Latin pattern (e.g. user backspaced past the locked letter).
+    async function reconcileOverrides() {
+      if (!hasOverrides() || !currentInput) {
+        clearOverrides();
+        return;
+      }
+      const slots = await invoke('letter_slots', { word: currentInput });
+      letterSlots = slots;
+      const next = {};
+      for (const slot of slots) {
+        const v = letterOverrides[slot.pos];
+        if (v && (slot.primary === v || slot.alternatives.includes(v))) {
+          next[slot.pos] = v;
+        }
+      }
+      letterOverrides = next;
+    }
+
+    function positionPicker() {
+      // Anchor below the suggestions list, inside the typing-panels area.
+      const anchor = suggestionList.getBoundingClientRect();
+      pickerEl.style.top = (anchor.top - 4) + 'px';
+      pickerEl.style.left = anchor.left + 'px';
+      // Snap inside viewport
+      requestAnimationFrame(() => {
+        const w = pickerEl.offsetWidth;
+        const margin = 8;
+        const maxLeft = window.innerWidth - w - margin;
+        const left = Math.min(Math.max(anchor.left, margin), maxLeft);
+        pickerEl.style.left = left + 'px';
+        // Place just above the first suggestion if there's room, else below.
+        const h = pickerEl.offsetHeight;
+        const above = anchor.top - h - 6;
+        pickerEl.style.top = (above >= margin ? above : (anchor.bottom + 6)) + 'px';
+      });
+    }
+
+    function renderPicker() {
+      if (!pickerOpen || letterSlots.length === 0) {
+        pickerEl.classList.add('hidden');
+        return;
+      }
+      const slot = letterSlots[pickerSlotIdx];
+      if (!slot) {
+        pickerEl.classList.add('hidden');
+        return;
+      }
+      const hasAlts = slot.alternatives.length > 0;
+      const chips = [slot.primary, ...slot.alternatives];
+      const chipsHtml = chips.map((c, i) => {
+        const sel = hasAlts && i === pickerAltIdx ? 'selected' : '';
+        const dis = !hasAlts ? 'disabled' : '';
+        return `<div class="lp-chip ${sel} ${dis}" data-idx="${i}">${c}</div>`;
+      }).join('');
+      const tail = hasAlts ? '' : '<span class="lp-empty">no alternatives</span>';
+      pickerEl.innerHTML = `<span class="lp-latin">${slot.pattern}</span>${chipsHtml}${tail}`;
+      pickerEl.classList.remove('hidden');
+      if (hasAlts) {
+        pickerEl.querySelectorAll('.lp-chip').forEach(chip => {
+          chip.addEventListener('click', () => {
+            pickerAltIdx = parseInt(chip.dataset.idx, 10);
+            commitPickerSelection();
+          });
+        });
+      }
+      positionPicker();
+    }
+
+    // Pick the slot the user is "pointing at" using the input's cursor /
+    // text-selection. Selection range overlapping a slot wins; otherwise the
+    // slot containing the caret, else the nearest preceding slot, else the
+    // last slot.
+    function slotIdxFromSelection(slots) {
+      // Translate raw-input cursor positions to trimmed-input space (currentInput
+      // is `raw.trim()`, slot positions are based on that).
+      const raw = inputEl.value;
+      const leading = raw.length - raw.trimStart().length;
+      const rawStart = inputEl.selectionStart ?? raw.length;
+      const rawEnd = inputEl.selectionEnd ?? rawStart;
+      const selStart = Math.max(0, rawStart - leading);
+      const selEnd = Math.max(selStart, rawEnd - leading);
+
+      // Range selection: first slot that overlaps.
+      if (selEnd > selStart) {
+        for (let i = 0; i < slots.length; i++) {
+          const s = slots[i];
+          if (s.pos < selEnd && s.pos + s.pattern.length > selStart) return i;
+        }
+      }
+      // Caret: slot containing or ending at caret, else nearest preceding.
+      let containing = -1;
+      let preceding = -1;
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i];
+        const end = s.pos + s.pattern.length;
+        if (s.pos < selStart && end >= selStart) containing = i;
+        if (s.pos < selStart) preceding = i;
+        if (s.pos === selStart) return i; // caret right before this slot
+      }
+      if (containing >= 0) return containing;
+      if (preceding >= 0) return preceding;
+      return slots.length - 1;
+    }
+
+    async function openPicker() {
+      if (!currentInput) return;
+      // Single-word picker only for v1 — overrides apply to the active word.
+      const slots = await invoke('letter_slots', { word: currentInput });
+      if (!slots.length) return;
+      letterSlots = slots;
+      pickerSlotIdx = slotIdxFromSelection(slots);
+      pickerOpen = true;
+      const slot = slots[pickerSlotIdx];
+      const current = letterOverrides[slot.pos] || slot.primary;
+      const chips = [slot.primary, ...slot.alternatives];
+      pickerAltIdx = Math.max(0, chips.indexOf(current));
+      renderPicker();
+      markCmdgTipUsed();
+    }
+
+    function closePicker() {
+      pickerOpen = false;
+      pickerEl.classList.add('hidden');
+    }
+
+    async function commitPickerSelection() {
+      const slot = letterSlots[pickerSlotIdx];
+      if (!slot) { closePicker(); return; }
+      const chips = [slot.primary, ...slot.alternatives];
+      const choice = chips[pickerAltIdx];
+      // Snapshot the previous override map before applying — Cmd+Z pops this
+      // off the history to revert just the last picker action.
+      pickerHistory.push({ ...letterOverrides });
+      // Always store — picking the primary forces the letter to appear even
+      // in middle position, where the auto-drop would normally remove it.
+      letterOverrides[slot.pos] = choice;
+      closePicker();
+      await refreshSuggestions();
+    }
+
+    // Re-runs the engine for the current input, applying any overrides. Mirrors
+    // the input-handler's debounced path but is callable on demand from the
+    // picker without a typing event.
+    async function refreshSuggestions() {
+      if (!currentInput) {
+        currentCandidates = [];
+        currentEmojis = [];
+        renderAll();
+        return;
+      }
+      const cmd = hasOverrides() ? 'transliterate_with_overrides' : 'transliterate';
+      const args = hasOverrides()
+        ? { input: currentInput, overrides: letterOverrides }
+        : { input: currentInput };
+      const result = await invoke(cmd, args);
+      if (result.words.length > 0) {
+        const lastWord = result.words[result.words.length - 1];
+        currentCandidates = lastWord.candidates;
+        currentEmojis = lastWord.emojis || [];
+      }
+      selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
+      renderAll();
+    }
+
+    // ── Cmd+G hover tip ─────────────────────────────────────────────────────
+    const cmdgTipEl = document.getElementById('cmdg-tip');
+    // v2: previous version perma-dismissed on first use; bump key to ignore that.
+    const TIP_KEY = 'arabizi-tip-cmdg-v2';
+    const TIP_RESURFACE_DAYS = 7;
+    let cmdgHoverTimer = null;
+    let cmdgKbdTimer = null;
+
+    function readTipState() {
+      try {
+        return JSON.parse(localStorage.getItem(TIP_KEY) || '{}');
+      } catch (_) { return {}; }
+    }
+
+    function writeTipState(s) {
+      localStorage.setItem(TIP_KEY, JSON.stringify(s));
+    }
+
+    function shouldShowCmdgTip() {
+      const s = readTipState();
+      if (s.permDismissed) return false;
+      if (!s.lastShown) return true;
+      const ageDays = (Date.now() - new Date(s.lastShown).getTime()) / 86400000;
+      // After the user has seen and used it once, hide for N days then resurface.
+      if (s.seen && ageDays < TIP_RESURFACE_DAYS) return false;
+      return true;
+    }
+
+    function markCmdgTipUsed() {
+      // Mark seen + reset the resurface clock. Permanent dismissal is reserved
+      // for the explicit "×" button — used != "never want to see this again".
+      const s = readTipState();
+      writeTipState({ ...s, seen: true, lastShown: new Date().toISOString() });
+      hideCmdgTip();
+    }
+
+    function showCmdgTip(anchorRect) {
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      const key = isMac ? '⌘' : 'Ctrl';
+      cmdgTipEl.innerHTML = `
+        <span>Press <kbd>${key}</kbd>+<kbd>G</kbd> to swap a letter</span>
+        <button class="cmdg-tip-dismiss" id="cmdg-tip-dismiss" title="Don't show again">×</button>
+      `;
+      cmdgTipEl.classList.add('show');
+      // Position to the left of the suggestion (suggestions panel is RTL/right-aligned).
+      requestAnimationFrame(() => {
+        const tipW = cmdgTipEl.offsetWidth;
+        const tipH = cmdgTipEl.offsetHeight;
+        const margin = 8;
+        let left = anchorRect.left - tipW - 8;
+        if (left < margin) left = anchorRect.right + 8;
+        let top = anchorRect.top + (anchorRect.height - tipH) / 2;
+        top = Math.max(margin, Math.min(top, window.innerHeight - tipH - margin));
+        cmdgTipEl.style.left = left + 'px';
+        cmdgTipEl.style.top = top + 'px';
+      });
+      const btn = document.getElementById('cmdg-tip-dismiss');
+      if (btn) btn.addEventListener('click', () => {
+        writeTipState({ permDismissed: true, lastShown: new Date().toISOString(), seen: true });
+        hideCmdgTip();
+      });
+      // Track recency only — `seen` is set by markCmdgTipUsed() once the user
+      // actually invokes Cmd+G. Showing alone shouldn't trigger the 7-day hide.
+      const s = readTipState();
+      writeTipState({ ...s, lastShown: new Date().toISOString() });
+    }
+
+    function hideCmdgTip() {
+      cmdgTipEl.classList.remove('show');
+      clearTimeout(cmdgHoverTimer);
+      cmdgHoverTimer = null;
+    }
+
+    // Triggered after the user pauses on a suggestion via keyboard (arrow nav).
+    // Mirrors the mouse-hover path so the tip surfaces regardless of input method.
+    function scheduleCmdgTipForSelected() {
+      clearTimeout(cmdgKbdTimer);
+      hideCmdgTip();
+      if (!shouldShowCmdgTip()) return;
+      cmdgKbdTimer = setTimeout(async () => {
+        if (!currentInput || pickerOpen) return;
+        if (!letterSlots.length) {
+          letterSlots = await invoke('letter_slots', { word: currentInput });
+        }
+        if (!letterSlots.length) return;
+        const sel = suggestionList.querySelector('.suggestion.selected');
+        if (sel) showCmdgTip(sel.getBoundingClientRect());
+      }, 1000);
+    }
+
+    suggestionList.addEventListener('mouseover', (e) => {
+      const sug = e.target.closest('.suggestion');
+      if (!sug) return;
+      if (!shouldShowCmdgTip()) return;
+      clearTimeout(cmdgHoverTimer);
+      cmdgHoverTimer = setTimeout(() => {
+        if (!letterSlots.length && currentInput) {
+          // Lazy-fetch slots so we only show the tip when there's something to swap
+          invoke('letter_slots', { word: currentInput }).then(slots => {
+            if (slots.length > 0) showCmdgTip(sug.getBoundingClientRect());
+          });
+        } else if (letterSlots.length > 0) {
+          showCmdgTip(sug.getBoundingClientRect());
+        }
+      }, 1000);
+    });
+    suggestionList.addEventListener('mouseout', (e) => {
+      const sug = e.target.closest('.suggestion');
+      if (!sug) return;
+      // Tiny grace so moving from suggestion to dismiss button doesn't kill it.
+      clearTimeout(cmdgHoverTimer);
+      cmdgHoverTimer = setTimeout(hideCmdgTip, 200);
+    });
+    cmdgTipEl.addEventListener('mouseenter', () => clearTimeout(cmdgHoverTimer));
+    cmdgTipEl.addEventListener('mouseleave', hideCmdgTip);
+
+    // ── Changelog modal (shown after auto-update relaunch) ──────────────────
+    const changelogOverlay = document.getElementById('changelog-overlay');
+    const changelogVersionEl = document.getElementById('changelog-version');
+    const changelogBodyEl = document.getElementById('changelog-body');
+    const changelogCloseBtn = document.getElementById('changelog-close-btn');
+    const CHANGELOG_SEEN_KEY = 'arabizi-last-seen-version';
+
+    async function maybeShowChangelog() {
+      try {
+        const currentVersion = await window.__TAURI__.app.getVersion();
+        const lastSeen = localStorage.getItem(CHANGELOG_SEEN_KEY);
+        // No version marker yet, but other Arabizi state exists → this is an
+        // upgrade from a build that predates the changelog system. Show it.
+        // A truly fresh install has empty localStorage and skips the modal.
+        if (lastSeen === null) {
+          const isReturningUser = Object.keys(localStorage).some(k => k.startsWith('arabizi-'));
+          localStorage.setItem(CHANGELOG_SEEN_KEY, currentVersion);
+          if (!isReturningUser) return;
+          // Fall through and try to show the entry for currentVersion.
+        } else if (lastSeen === currentVersion) {
+          return;
+        } else {
+          localStorage.setItem(CHANGELOG_SEEN_KEY, currentVersion);
+        }
+
+        const res = await fetch('CHANGELOG.json', { cache: 'no-store' });
+        const data = await res.json();
+        const entry = (data.versions || []).find(v => v.version === currentVersion);
+        // Always advance the seen marker so we don't keep re-prompting if the
+        // changelog file lags behind the version bump.
+        localStorage.setItem(CHANGELOG_SEEN_KEY, currentVersion);
+        if (!entry) return;
+
+        changelogVersionEl.textContent = `v${entry.version}` + (entry.date ? ` · ${entry.date}` : '');
+        const items = (entry.items || []).map(t => `<li>${t}</li>`).join('');
+        const title = entry.title ? `<p><strong>${entry.title}</strong></p>` : '';
+        changelogBodyEl.innerHTML = `${title}<ul>${items}</ul>`;
+        changelogOverlay.classList.remove('hidden');
+      } catch (_) { /* updater offline / file missing — silent */ }
+    }
+
+    changelogCloseBtn.addEventListener('click', () => {
+      changelogOverlay.classList.add('hidden');
+    });
 
     // ── Auto-update + manual "Check for updates" ──
     // Pings the updater endpoint at launch and surfaces a banner with

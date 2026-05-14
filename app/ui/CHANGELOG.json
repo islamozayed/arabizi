@@ -1,15 +1,21 @@
 {
   "versions": [
     {
-      "version": "0.3.0-dev",
+      "version": "0.9.0",
       "date": "2026-05-14",
-      "title": "Starter words, auto-lock, numbers, tashkeel picker (WIP — bundles with dictionary upgrade for v1.0)",
+      "title": "Smarter suggestions, full-word tashkeel, and a friendlier UI (release candidate before v1.0)",
       "items": [
-        "<strong>Starter words:</strong> the empty-widget view now shows your go-to phrases. <kbd>↵</kbd> pastes, <kbd>Tab</kbd> seeds a sentence so you can keep typing.",
-        "<strong>Auto-engage word lock:</strong> highlight a committed word to edit it and your previous letter-pick choices come back automatically — no more re-pressing <kbd>Cmd</kbd>+<kbd>G</kbd>.",
-        "<strong>Numbers convert to Arabic-Indic:</strong> type <code>2026</code> → ٢٠٢٦. Press <kbd>Tab</kbd> on the suggestion to keep the English form. Single bare digits (<code>3</code>, <code>7</code>) still mean ع / ح.",
-        "<strong>Two-letter <kbd>Cmd</kbd>+<kbd>G</kbd>:</strong> select two adjacent letters in the input before opening the picker to pick alternates for both at once.",
-        "<strong>Tashkeel picker:</strong> <kbd>Cmd</kbd>+<kbd>T</kbd> (<kbd>Ctrl</kbd>+<kbd>T</kbd>) on a letter shows all diacritic options — fatha, kasra, damma, sukun, shadda combos, tanween."
+        "<strong>Way smarter suggestions.</strong> A big dictionary upgrade means common words like <em>tab3an</em> (طبعاً), <em>7abibi</em> (حبيبي), and <em>insha2allah</em> (إن شاء الله) land on top from the very first try, even when you spell them in shorthand.",
+        "<strong>One-tap tashkeel for a whole word.</strong> Press <kbd>Ctrl</kbd>+<kbd>T</kbd> (or <kbd>⌘</kbd>+<kbd>T</kbd> on Mac) with your cursor at the end of a word to add all the diacritics in one go. Select a single letter and only that letter gets the marks — same shortcut, smarter behavior.",
+        "<strong>Edit any word by clicking it.</strong> Click a committed word in the preview to re-open it for editing. No more backspacing through everything to fix one word.",
+        "<strong>Starter words on the empty screen.</strong> The empty-widget view shows your go-to phrases. <kbd>↵</kbd> pastes, <kbd>Tab</kbd> drops the phrase into the input so you can keep typing.",
+        "<strong>Numbers convert to Arabic-Indic.</strong> Type <code>2026</code> → ٢٠٢٦. Press <kbd>Tab</kbd> on the suggestion to keep the English form. Single bare digits (<code>3</code>, <code>7</code>) still mean ع / ح.",
+        "<strong>Two-letter swap.</strong> Select two adjacent letters in the input, then <kbd>Ctrl</kbd>+<kbd>G</kbd> (or <kbd>⌘</kbd>+<kbd>G</kbd>) to pick alternates for both at once.",
+        "<strong>Per-letter tashkeel picker.</strong> <kbd>Ctrl</kbd>+<kbd>T</kbd> on a selected letter shows every diacritic option — fatha, kasra, damma, sukun, shadda combos, tanween.",
+        "<strong>Shortcut hints when you need them.</strong> Highlight any letter and a small hint appears showing the swap and tashkeel shortcuts. Dismiss it once and it won't come back.",
+        "<strong>All shortcuts in one place.</strong> Settings now has a Shortcuts page listing every keyboard shortcut, with the right key icons for Windows and Mac.",
+        "<strong>Reset to a fresh start.</strong> A new Reset app button under Settings → System wipes everything Franconvert has learned about you, so you can start over or hand the app to someone else.",
+        "<strong>Cleaner picker.</strong> Removed some redundant labels in the letter and tashkeel pickers so you can focus on the choices."
       ]
     },
     {

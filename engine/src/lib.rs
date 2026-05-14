@@ -4,6 +4,7 @@ mod emoji;
 mod cldr_ar;
 mod engine;
 mod frequency;
+mod tashkeela;
 mod user_prefs;
 
 pub use engine::{LetterSlot, TransliterationEngine};

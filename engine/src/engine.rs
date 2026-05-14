@@ -4,6 +4,7 @@ use crate::cldr_ar::CLDR_AR;
 use crate::dictionary::build_dictionary;
 use crate::emoji::{build_emoji_map, build_emoticon_map};
 use crate::frequency::FrequencyList;
+use crate::tashkeela::TashkeelaList;
 use crate::mappings::{
     is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS,
     PICKER_ALTERNATIVES, SHORT_VOWELS,
@@ -30,6 +31,7 @@ pub struct TransliterationEngine {
     emoticon_map: HashMap<&'static str, Vec<&'static str>>,
     cldr_index: HashMap<String, Vec<&'static str>>,
     frequency: FrequencyList,
+    tashkeela: TashkeelaList,
 }
 
 impl TransliterationEngine {
@@ -40,7 +42,16 @@ impl TransliterationEngine {
             emoticon_map: build_emoticon_map(),
             cldr_index: Self::build_cldr_index(),
             frequency: FrequencyList::load(),
+            tashkeela: TashkeelaList::load(),
         }
+    }
+
+    /// Return the corpus's most-frequent fully-vocalized form for a given
+    /// (already transliterated) Arabic candidate, if one exists. Used by the
+    /// tashkeel modifier (Cmd+T) to offer a one-shot diacritized form at the
+    /// word level — *not* applied to default candidates, which stay bare.
+    pub fn lookup_vocalized(&self, candidate: &str) -> Option<String> {
+        self.tashkeela.vocalized(candidate).map(|s| s.to_string())
     }
 
     fn build_cldr_index() -> HashMap<String, Vec<&'static str>> {
@@ -484,7 +495,19 @@ impl TransliterationEngine {
             candidates.push(no_vowels);
         }
 
-        // 5. Tanween variations — "an" ending often means tanween fatha (اً) not literal ان
+        // 5. Consonant swap variations — try swapping each ambiguous consonant.
+        // Must run BEFORE tanween/alef-layyina so those variations apply to
+        // swap-derived forms too (otherwise "tb3n" generates طبعن but never
+        // طبعاً, and ranking can't surface the right answer).
+        let swaps = self.generate_consonant_swaps(&word);
+        for swap in swaps {
+            if !candidates.contains(&swap) {
+                candidates.push(swap);
+            }
+        }
+
+        // 6. Tanween variations — "an" ending often means tanween fatha (اً)
+        // not literal ان. Applied to every consonant variant generated above.
         let tanween = Self::generate_tanween_variants(&candidates);
         for t in tanween {
             if !candidates.contains(&t) {
@@ -492,19 +515,11 @@ impl TransliterationEngine {
             }
         }
 
-        // 5b. Alef layyina variants — word-final ا could be ى (e.g. تعالا → تعالى)
+        // 6b. Alef layyina variants — word-final ا could be ى (e.g. تعالا → تعالى)
         let alef_layyina = Self::generate_alef_layyina_variants(&candidates);
         for v in alef_layyina {
             if !candidates.contains(&v) {
                 candidates.push(v);
-            }
-        }
-
-        // 6. Consonant swap variations — try swapping each ambiguous consonant one at a time
-        let swaps = self.generate_consonant_swaps(&word);
-        for swap in swaps {
-            if !candidates.contains(&swap) {
-                candidates.push(swap);
             }
         }
 
@@ -579,7 +594,18 @@ impl TransliterationEngine {
         // Words with individual Arabic tokens all in the frequency list score well.
         // For single-word candidates, check directly.
         // Score inversely proportional to rank (rank 0 = most common = highest score).
-        let words: Vec<&str> = candidate.split_whitespace().collect();
+        //
+        // Both lookup tables key on bare (unvocalized) forms — OpenSubtitles is
+        // already stripped, Tashkeela is indexed by stripped base. Candidates
+        // we generate carry tanween (e.g. طبعاً), so we must strip before
+        // looking up or every tanween candidate misses the frequency signal
+        // and falls back to insertion order. That bug caused "tb3n" → تبعاً
+        // (rare) to outrank طبعاً (top-100 word).
+        let words_owned: Vec<String> = candidate
+            .split_whitespace()
+            .map(strip_tashkeel)
+            .collect();
+        let words: Vec<&str> = words_owned.iter().map(|s| s.as_str()).collect();
         let mut freq_score: u64 = 0;
         let mut all_found = true;
         for w in &words {
@@ -592,6 +618,24 @@ impl TransliterationEngine {
         }
         if all_found && !words.is_empty() {
             score += freq_score / words.len() as u64;
+        }
+
+        // Tashkeela corpus: tashkeel-aware MSA/classical signal. The corpus
+        // covers vocabulary the OpenSubtitles list misses (classical / formal)
+        // and acts as a tiebreaker between rule-generated variants. Scaled
+        // smaller than the OpenSubtitles signal because Tashkeela is
+        // MSA-heavy and would otherwise outrank dialectal real forms.
+        let mut tashkeela_score: u64 = 0;
+        let mut all_tashkeela = true;
+        for w in &words {
+            if let Some(rank) = self.tashkeela.rank(w) {
+                tashkeela_score += 150_000u64.saturating_sub((rank as u64).min(150_000));
+            } else {
+                all_tashkeela = false;
+            }
+        }
+        if all_tashkeela && !words.is_empty() {
+            score += tashkeela_score / words.len() as u64;
         }
 
         score
@@ -1401,6 +1445,72 @@ mod tests {
         let results = e.transliterate_word_with_overrides("salam", &overrides, None);
         assert!(results[0].contains("سِّ") || results[0].contains("سّ"),
             "expected shadda+kasra to survive on س, got {:?}", results);
+    }
+
+    #[test]
+    fn tashkeela_lookup_returns_none_for_unknown() {
+        let e = engine();
+        // Bogus Arabic string should never appear in Tashkeela.
+        assert!(e.lookup_vocalized("زززززز").is_none());
+    }
+
+    #[test]
+    fn tashkeela_lookup_present_when_corpus_loaded() {
+        let e = engine();
+        // If the embedded corpus is non-empty, at least one of these very
+        // common MSA words should resolve to a vocalized form. The check is
+        // gated so the test still passes on a fresh checkout where the data
+        // file is the empty placeholder.
+        let probes = ["في", "من", "الله", "على", "إلى"];
+        let any_known = probes.iter().any(|w| e.frequency.rank(w).is_some());
+        if !any_known {
+            return; // engine not configured — skip
+        }
+        let corpus_populated = probes.iter().any(|w| e.lookup_vocalized(w).is_some());
+        if corpus_populated {
+            // At least one probe must round-trip: lookup returns a string whose
+            // tashkeel-stripped form equals the probe.
+            let hit = probes.iter()
+                .find_map(|w| e.lookup_vocalized(w).map(|v| (w, v)));
+            assert!(hit.is_some(), "expected at least one corpus hit");
+            let (probe, vocalized) = hit.unwrap();
+            let stripped: String = vocalized.chars()
+                .filter(|c| !matches!(*c as u32, 0x064B..=0x0652 | 0x0670 | 0x0610..=0x061A))
+                .collect();
+            assert_eq!(stripped, *probe);
+        }
+    }
+
+    #[test]
+    fn frequency_lookup_strips_tashkeel() {
+        let e = engine();
+        // "tb3n" should resolve to طبعاً (very common) not تبعاً (rare).
+        // Both candidates carry tanween, so without tashkeel-stripping in the
+        // frequency lookup neither hits the freq list and ranking falls back
+        // to insertion order — which puts the wrong one (تبعاً) on top.
+        let results = e.transliterate_word("tb3n");
+        assert_eq!(results[0], "طبعاً",
+            "expected طبعاً on top for 'tb3n', got {:?}", results);
+    }
+
+    #[test]
+    fn tanween_applies_to_consonant_swaps() {
+        let e = engine();
+        // "tb3an" is the other natural spelling; tanween generation has to
+        // see the ط swap candidate (طبعن) so it can emit طبعاً.
+        let results = e.transliterate_word("tb3an");
+        assert_eq!(results[0], "طبعاً",
+            "expected طبعاً on top for 'tb3an', got {:?}", results);
+    }
+
+    #[test]
+    fn tashkeela_ranking_keeps_existing_winners() {
+        let e = engine();
+        // The corpus must not unseat established dictionary picks. "shukran"
+        // → شكرًا is a hand-curated entry; ranking changes shouldn't displace it.
+        let results = e.transliterate("shukran");
+        assert_eq!(results[0], "شكرًا",
+            "Tashkeela ranking displaced the dictionary entry: {:?}", results);
     }
 
     #[test]

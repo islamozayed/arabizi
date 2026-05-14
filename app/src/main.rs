@@ -234,6 +234,15 @@ fn transliterate_with_overrides(
     TransliterateResult { combined, words }
 }
 
+/// Most-frequent fully-vocalized variant of an Arabic word from the Tashkeela
+/// corpus, used by the word-scope tashkeel picker. Returns None when the word
+/// isn't in the corpus — the UI falls back to per-letter diacritic chips.
+#[tauri::command]
+fn lookup_vocalized(state: tauri::State<'_, Mutex<AppState>>, arabic: String) -> Option<String> {
+    let state = state.lock().unwrap();
+    state.engine.lookup_vocalized(arabic.trim())
+}
+
 #[tauri::command]
 fn record_selection(state: tauri::State<'_, Mutex<AppState>>, input: String, arabic: String) {
     let mut state = state.lock().unwrap();
@@ -773,6 +782,24 @@ fn position_visible(window: &tauri::WebviewWindow, x: i32, y: i32) -> bool {
     })
 }
 
+/// Wipe all backend state: learned user prefs and the onboarding-shown marker.
+/// Frontend localStorage is cleared in JS before this is called. The app then
+/// restarts itself so the onboarding window can show fresh.
+#[tauri::command]
+fn reset_app_data(state: tauri::State<'_, Mutex<AppState>>, app: tauri::AppHandle) -> Result<(), String> {
+    // Drop the in-memory prefs first so the auto-save on shutdown can't
+    // re-write the file we're about to delete.
+    {
+        let mut state = state.lock().map_err(|e| e.to_string())?;
+        state.prefs = UserPreferences::new();
+    }
+    if let Ok(app_data) = app.path().app_data_dir() {
+        let _ = fs::remove_file(app_data.join("user_prefs.json"));
+        let _ = fs::remove_file(app_data.join("onboarding_shown"));
+    }
+    app.restart();
+}
+
 // ── Onboarding ────────────────────────────────────────────────────────────────
 
 /// Called from the onboarding window when the user dismisses it.
@@ -1049,6 +1076,7 @@ fn main() {
             transliterate,
             transliterate_with_overrides,
             letter_slots,
+            lookup_vocalized,
             paste_from_clipboard,
             hide_and_paste,
             record_selection,
@@ -1058,6 +1086,7 @@ fn main() {
             get_autostart,
             set_autostart,
             mark_onboarding_shown,
+            reset_app_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

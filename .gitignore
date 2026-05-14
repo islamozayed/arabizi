@@ -2,3 +2,4 @@
 /app/gen/schemas/
 *.key
 *.key.pub
+/engine/.cache/

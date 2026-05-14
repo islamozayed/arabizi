@@ -1,6 +1,6 @@
 {
   "productName": "Franconvert",
-  "version": "0.3.0-dev",
+  "version": "0.9.0",
   "identifier": "com.franconvert.app",
   "build": {
     "frontendDist": "./ui"

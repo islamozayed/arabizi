@@ -17,6 +17,28 @@
     @font-face { font-family: 'Rubik'; src: url('fonts/Rubik-Medium.ttf') format('truetype'); font-weight: 500; font-display: swap; }
     @font-face { font-family: 'Rubik'; src: url('fonts/Rubik-SemiBold.ttf') format('truetype'); font-weight: 600; font-display: swap; }
     @font-face { font-family: 'Rubik'; src: url('fonts/Rubik-Bold.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+    @font-face {
+      font-family: 'Material Symbols Outlined';
+      src: url('fonts/material-symbols-outlined.woff2') format('woff2');
+      font-weight: 100 700;
+      font-display: swap;
+    }
+    .material-symbols {
+      font-family: 'Material Symbols Outlined';
+      font-weight: 400;
+      font-style: normal;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+      font-variation-settings: 'opsz' 20;
+      vertical-align: middle;
+    }
 
     /* === Theme Variables === */
     :root {
@@ -496,6 +518,132 @@
       direction: ltr;
     }
 
+    /* ── Shortcuts settings page ── */
+    .shortcuts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .shortcuts-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 4px;
+      border-radius: 6px;
+    }
+    .shortcuts-row:hover { background: var(--item-hover); }
+    .shortcuts-label {
+      font: 13px/18px var(--font);
+      color: var(--text-primary);
+    }
+    .shortcuts-keys {
+      font: 12px/1 var(--font);
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .shortcuts-keys kbd {
+      background: var(--kbd-bg);
+      border: 1px solid var(--kbd-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font: 11px/1 var(--font);
+      color: var(--text-primary);
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+    }
+    .shortcuts-keys kbd .material-symbols { font-size: 14px; }
+
+    /* ── Shortcuts tip (anchored to bottom-center of the main panel) ── */
+    .shortcuts-tip {
+      position: fixed;
+      z-index: 60;
+      background: var(--bg-surface);
+      border: 1px solid var(--outline);
+      color: var(--text-primary);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font: 13px/1.4 var(--font);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      column-gap: 10px;
+      align-items: center;
+      opacity: 0;
+      transform: translate(-50%, 4px);
+      transition: opacity 0.12s, transform 0.12s;
+      pointer-events: none;
+    }
+    .shortcuts-tip.show {
+      opacity: 1;
+      transform: translate(-50%, 0);
+      pointer-events: auto;
+    }
+    .shortcuts-tip .st-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .shortcuts-tip .st-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      white-space: nowrap;
+      /* Lock the row to the kbd box height so the action column can mirror
+         it exactly — each icon button aligns to the centerline of its row. */
+      min-height: 20px;
+    }
+    .shortcuts-tip .st-keys {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .shortcuts-tip .st-label {
+      color: var(--text-secondary);
+    }
+    .shortcuts-tip kbd {
+      background: var(--kbd-bg);
+      border: 1px solid var(--kbd-border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font: 11px/1 var(--font);
+      color: var(--text-primary);
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+    .shortcuts-tip kbd .material-symbols { font-size: 14px; }
+    .shortcuts-tip .st-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      justify-content: flex-start;
+      /* Match .st-rows row rhythm so buttons line up with their rows. */
+      gap: 8px;
+      align-self: stretch;
+    }
+    .shortcuts-tip .st-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      opacity: 0.7;
+      cursor: pointer;
+      padding: 0 4px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      /* Same vertical box as .st-row so the icons share the row baseline. */
+      height: 20px;
+    }
+    .shortcuts-tip .st-btn:hover { opacity: 1; background: var(--item-hover); }
+    .shortcuts-tip .st-btn .material-symbols { font-size: 16px; }
+
     /* ── Cmd+G hover tip ── */
     .cmdg-tip {
       position: absolute;
@@ -631,6 +779,14 @@
       outline-color: var(--outline);
     }
     .preview-text .committed-word.editing { background: var(--accent-translucent); }
+
+    /* Live (uncommitted) preview word: matches .committed-word's box so the
+       glyph doesn't shift when SPACE flips it into a committed pill. No
+       cursor/hover state — it's not yet a click target. */
+    .preview-text .preview-current {
+      display: inline-block;
+      padding: 4px 6px;
+    }
 
     .preview-committed-hint {
       font: 12px/16px var(--font);
@@ -1333,6 +1489,7 @@
 
   <!-- Hover tip explaining Cmd+G -->
   <div class="cmdg-tip" id="cmdg-tip" role="tooltip"></div>
+  <div class="shortcuts-tip" id="shortcuts-tip" role="tooltip"></div>
 
   <!-- Changelog modal shown after auto-update relaunch -->
   <div class="changelog-overlay hidden" id="changelog-overlay">
@@ -1456,6 +1613,10 @@
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM112,80a16,16,0,1,1,16,16A16,16,0,0,1,112,80Zm72,32a8,8,0,0,1-8,8H136v13.58l30.66,46a8,8,0,0,1-13.32,8.88l-25.34-38-25.34,38a8,8,0,1,1-13.32-8.88l30.66-46V120H80a8,8,0,0,1,0-16h96A8,8,0,0,1,184,112Z"/></svg>
             <span>Accessibility</span>
           </button>
+          <button class="settings-nav-btn" data-page="shortcuts">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M216,56H40A16,16,0,0,0,24,72V184a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V72A16,16,0,0,0,216,56Zm0,128H40V72H216V184ZM72,112a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,112Zm32,0a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h8A8,8,0,0,1,104,112Zm32,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,136,112Zm32,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,168,112Zm32,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,200,112ZM72,144a8,8,0,0,1-8,8H56a8,8,0,0,1,0-16h8A8,8,0,0,1,72,144Zm128,0a8,8,0,0,1-8,8h-8a8,8,0,0,1,0-16h8A8,8,0,0,1,200,144Zm-16,32a8,8,0,0,1-8,8H80a8,8,0,0,1,0-16h96A8,8,0,0,1,184,176Zm-16-32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,144Z"/></svg>
+            <span>Shortcuts</span>
+          </button>
         </nav>
         <!-- Content -->
         <div class="settings-content">
@@ -1537,6 +1698,16 @@
               </div>
               <div class="shortcut-hint" id="update-status" style="margin-top: 6px; min-height: 14px;"></div>
             </div>
+            <div class="settings-subsec">
+              <div class="settings-section-label">Reset</div>
+              <div class="shortcut-row">
+                <div class="shortcut-current">
+                  <span class="shortcut-hint">Clear learned words, dismissed tips, and saved settings.</span>
+                </div>
+                <button class="shortcut-record-btn" id="reset-app-btn">Reset app</button>
+              </div>
+              <div class="shortcut-hint" id="reset-status" style="margin-top: 6px; min-height: 14px;"></div>
+            </div>
           </div>
           <!-- Accessibility page -->
           <div class="settings-page hidden" id="page-accessibility">
@@ -1556,6 +1727,34 @@
               <div class="toggle-row">
                 <span class="toggle-label">Dyslexia font</span>
                 <div class="toggle" id="dyslexia-font-toggle"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Shortcuts page -->
+          <div class="settings-page hidden" id="page-shortcuts">
+            <div class="settings-subsec">
+              <div class="settings-section-label">Editing</div>
+              <div class="shortcuts-list">
+                <div class="shortcuts-row"><span class="shortcuts-label">Swap a letter</span><span class="shortcuts-keys"><kbd data-mod></kbd><kbd>G</kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Add tashkeel (letter or whole word)</span><span class="shortcuts-keys"><kbd data-mod></kbd><kbd>T</kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Undo last picker change</span><span class="shortcuts-keys"><kbd data-mod></kbd><kbd>Z</kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Cycle picker chips</span><span class="shortcuts-keys"><kbd><span class="material-symbols">keyboard_tab</span></kbd></span></div>
+              </div>
+            </div>
+            <div class="settings-subsec">
+              <div class="settings-section-label">Suggestions</div>
+              <div class="shortcuts-list">
+                <div class="shortcuts-row"><span class="shortcuts-label">Move between candidates</span><span class="shortcuts-keys"><kbd><span class="material-symbols">keyboard_arrow_up</span></kbd><kbd><span class="material-symbols">keyboard_arrow_down</span></kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Keep Latin (skip transliteration)</span><span class="shortcuts-keys"><kbd><span class="material-symbols">keyboard_tab</span></kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Commit current word</span><span class="shortcuts-keys"><kbd><span class="material-symbols">space_bar</span></kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Paste committed text</span><span class="shortcuts-keys"><kbd><span class="material-symbols">keyboard_return</span></kbd></span></div>
+              </div>
+            </div>
+            <div class="settings-subsec">
+              <div class="settings-section-label">Words</div>
+              <div class="shortcuts-list">
+                <div class="shortcuts-row"><span class="shortcuts-label">Edit previous committed word</span><span class="shortcuts-keys"><kbd><span class="material-symbols">backspace</span></kbd></span></div>
+                <div class="shortcuts-row"><span class="shortcuts-label">Delete previous committed word</span><span class="shortcuts-keys"><kbd data-mod></kbd><kbd><span class="material-symbols">backspace</span></kbd></span></div>
               </div>
             </div>
           </div>
@@ -1630,6 +1829,7 @@
     const pageAppearance = document.getElementById('page-appearance');
     const pageSystem = document.getElementById('page-system');
     const pageAccessibility = document.getElementById('page-accessibility');
+    const pageShortcuts = document.getElementById('page-shortcuts');
     const largeTextToggle = document.getElementById('large-text-toggle');
     const highContrastToggle = document.getElementById('high-contrast-toggle');
     const dyslexiaFontToggle = document.getElementById('dyslexia-font-toggle');
@@ -2044,6 +2244,7 @@
       pageAppearance.classList.toggle('hidden', page !== 'appearance');
       pageSystem.classList.toggle('hidden', page !== 'system');
       pageAccessibility.classList.toggle('hidden', page !== 'accessibility');
+      pageShortcuts.classList.toggle('hidden', page !== 'shortcuts');
       closeColorPicker();
     }
 
@@ -2087,6 +2288,50 @@
     highContrastToggle.addEventListener('click', toggleHighContrast);
     dyslexiaFontToggle.addEventListener('click', toggleDyslexiaFont);
 
+    // ── Reset app ──
+    // Wipes the user-visible state: localStorage (dismissed tips, theme,
+    // accent, accessibility toggles, last-seen changelog) AND the backend
+    // user_prefs.json + onboarding marker via reset_app_data. Restarts the
+    // app so the onboarding window shows on next launch.
+    const resetBtn = document.getElementById('reset-app-btn');
+    const resetStatusEl = document.getElementById('reset-status');
+    let resetArmed = false;
+    let resetArmTimer = null;
+    if (resetBtn) {
+      resetBtn.addEventListener('click', async () => {
+        if (!resetArmed) {
+          resetArmed = true;
+          resetBtn.textContent = 'Click again to confirm';
+          resetStatusEl.textContent = 'This will erase learned words and saved settings.';
+          clearTimeout(resetArmTimer);
+          resetArmTimer = setTimeout(() => {
+            resetArmed = false;
+            resetBtn.textContent = 'Reset app';
+            resetStatusEl.textContent = '';
+          }, 4000);
+          return;
+        }
+        clearTimeout(resetArmTimer);
+        resetBtn.disabled = true;
+        resetBtn.textContent = 'Resetting…';
+        resetStatusEl.textContent = '';
+        try {
+          Object.keys(localStorage)
+            .filter(k => k.startsWith('arabizi-'))
+            .forEach(k => localStorage.removeItem(k));
+          await invoke('reset_app_data');
+          // reset_app_data calls app.restart() — control normally doesn't
+          // return. If it does (e.g. macOS dev mode), reload as a fallback.
+          location.reload();
+        } catch (e) {
+          resetBtn.disabled = false;
+          resetBtn.textContent = 'Reset app';
+          resetStatusEl.textContent = 'Reset failed: ' + e;
+          resetArmed = false;
+        }
+      });
+    }
+
     // ── Startup autolaunch ──
     async function initStartup() {
       try {
@@ -2115,12 +2360,13 @@
       if (btn) setTheme(btn.dataset.val);
     });
 
-    settingsBtn.addEventListener('click', () => {
+    function toggleSettings() {
       settingsOpen = !settingsOpen;
       if (settingsOpen) switchSettingsPage('appearance');
       renderAll();
       if (!settingsOpen) inputEl.focus();
-    });
+    }
+    settingsBtn.addEventListener('click', toggleSettings);
 
     backBtn.addEventListener('click', () => {
       settingsOpen = false;
@@ -2380,7 +2626,9 @@
             const cur = pickerSlotIndices[0];
             const idx = (cur + dir + letterSlots.length) % letterSlots.length;
             pickerSlotIndices = [idx];
-            pickerChips = buildPickerChips();
+            // Tab through letter slots — always letter-scoped, never word.
+            pickerScope = 'letter';
+            pickerChips = await buildPickerChips();
             const focused = pickerChips.findIndex(chip => {
               for (const [pos, val] of Object.entries(chip.picks)) {
                 const current = letterOverrides[Number(pos)] ||
@@ -2939,7 +3187,7 @@
         const current = emojiMode && currentEmojis.length > 0
           ? (currentEmojis[selectedEmojiIdx] || currentEmojis[0])
           : (currentCandidates[selectedIdx] || currentCandidates[0]);
-        parts.push(`<span>${escapeHtml(current)}</span>`);
+        parts.push(`<span class="preview-current">${escapeHtml(current)}</span>`);
       }
       previewText.innerHTML = parts.join(' ');
       previewText.scrollTop = previewText.scrollHeight;
@@ -2957,6 +3205,18 @@
 
     // ── Init ──
     initAccentColor();
+    // Fill modifier-key glyphs in the static shortcuts settings page.
+    // Material Symbols' keyboard_command_key reads cleanly on macOS; Windows
+    // users expect literal "Ctrl" text, so the platform fork happens here.
+    (function fillModKeys() {
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      document.querySelectorAll('kbd[data-mod]').forEach(el => {
+        el.innerHTML = isMac
+          ? '<span class="material-symbols">keyboard_command_key</span>'
+          : 'Ctrl';
+      });
+    })();
+
     applyTheme();
     initShortcut();
     initStartup();
@@ -2979,6 +3239,11 @@
     let pickerHistory = [];        // stack of letterOverrides snapshots for Cmd+Z
     let pickerOpen = false;
     let pickerMode = 'letter';     // 'letter' (Cmd+G) or 'tashkeel' (Cmd+T)
+    // Tashkeel scope: 'word' = caret at end of word with no selection,
+    //   show the corpus's best fully-vocalized form as a single chip.
+    // 'letter' = user selected one or more letters, show per-letter diacritic
+    //   chips for the focused letter (the existing behaviour).
+    let pickerScope = 'letter';
     // Multi-slot picker: pickerSlotIndices holds 1+ adjacent slot indices the
     // user has selected (range selection in the input). When 2+ slots are
     // selected the picker shows COMBINED Arabic chips (cartesian product of
@@ -3101,8 +3366,7 @@
         return `<div class="lp-chip ${sel} ${dis}" data-idx="${i}">${escapeHtml(chip.display)}</div>`;
       }).join('');
       const tail = hasChips ? '' : '<span class="lp-empty">no alternatives</span>';
-      const modeTag = pickerMode === 'tashkeel' ? '<span class="lp-mode">tashkeel</span>' : '';
-      pickerEl.innerHTML = `${modeTag}${labelHtml}${chipsHtml}${tail}`;
+      pickerEl.innerHTML = `${labelHtml}${chipsHtml}${tail}`;
       pickerEl.classList.remove('hidden');
       if (hasChips) {
         pickerEl.querySelectorAll('.lp-chip').forEach(chipEl => {
@@ -3173,12 +3437,37 @@
     //   tashkeel mode + N slots: 12 options applied to the *first* selected
     //     letter, with the rest shown as context (Arabic tashkeel sits
     //     between two consonants — attaching it to the first matches usage)
-    function buildPickerChips() {
+    async function buildPickerChips() {
       if (pickerSlotIndices.length === 0) return [];
       const slots = pickerSlotIndices.map(i => letterSlots[i]).filter(Boolean);
       if (slots.length === 0) return [];
 
       if (pickerMode === 'tashkeel') {
+        // Word scope: ask the engine for the corpus's fully-vocalized form of
+        // the current top candidate. If found, emit a single chip whose picks
+        // distribute the tashkeel marks across all slots (via the same
+        // letter-by-letter alignment we use to back-derive picker state).
+        // If the word isn't in the corpus, fall through to per-letter mode on
+        // the final letter so the user can still mark something manually.
+        if (pickerScope === 'word') {
+          const topArabic = currentCandidates[0];
+          if (topArabic) {
+            const vocalized = await invoke('lookup_vocalized', { arabic: topArabic });
+            if (vocalized && vocalized !== topArabic) {
+              const picks = deriveOverridesFromCandidate(letterSlots, vocalized);
+              if (picks) {
+                return [{ display: vocalized, picks }];
+              }
+            }
+          }
+          // No corpus hit — degrade to per-letter chips on the last letter slot
+          // so the keystroke isn't a no-op.
+          const lastLetter = [...letterSlots].reverse().find(s => /^[^aeiou]/i.test(s.pattern)) || letterSlots[letterSlots.length - 1];
+          pickerSlotIndices = [letterSlots.indexOf(lastLetter)];
+          slots.length = 0;
+          slots.push(lastLetter);
+        }
+
         const first = slots[0];
         const base = currentSlotBaseLetter(first);
         const tail = slots.slice(1).map(s => currentSlotBaseLetter(s)).join('');
@@ -3236,9 +3525,27 @@
       const slots = await invoke('letter_slots', { word: currentInput });
       if (!slots.length) return;
       letterSlots = slots;
-      pickerSlotIndices = slotIdxsFromSelection(slots);
+
+      // Tashkeel scope: 'word' when the caret is at the end with no selection
+      // (user wants to vocalize the whole word from the Tashkeela corpus);
+      // 'letter' when the user has actively selected one or more letters.
+      // Letter-mode (Cmd+G) is always letter-scoped.
+      pickerScope = 'letter';
+      if (pickerMode === 'tashkeel') {
+        const raw = inputEl.value;
+        const leading = raw.length - raw.trimStart().length;
+        const selStart = (inputEl.selectionStart ?? raw.length) - leading;
+        const selEnd = (inputEl.selectionEnd ?? selStart) - leading;
+        const noSelection = selEnd === selStart;
+        const atEnd = selStart >= currentInput.length;
+        if (noSelection && atEnd) pickerScope = 'word';
+      }
+
+      pickerSlotIndices = pickerScope === 'word'
+        ? slots.map((_, i) => i)
+        : slotIdxsFromSelection(slots);
       pickerOpen = true;
-      pickerChips = buildPickerChips();
+      pickerChips = await buildPickerChips();
 
       // Default focus = chip matching the current state of every selected slot.
       const focused = pickerChips.findIndex(chip => {
@@ -3257,6 +3564,7 @@
     function closePicker() {
       pickerOpen = false;
       pickerMode = 'letter';
+      pickerScope = 'letter';
       pickerSlotIndices = [];
       pickerChips = [];
       pickerEl.classList.add('hidden');
@@ -3374,6 +3682,125 @@
       clearTimeout(cmdgHoverTimer);
       cmdgHoverTimer = null;
     }
+
+    // ── Shortcuts tip on letter selection ──
+    // Surfaces when the user selects 1+ characters in the input, pointing at
+    // Cmd+G / Cmd+T and the Shortcuts settings page. Dismissable; permanently
+    // hidden after the × is clicked. Independent of the Cmd+G hover tip.
+    const shortcutsTipEl = document.getElementById('shortcuts-tip');
+    const SHORTCUTS_TIP_KEY = 'arabizi-tip-shortcuts-v1';
+
+    function shortcutsTipDismissed() {
+      try {
+        const s = JSON.parse(localStorage.getItem(SHORTCUTS_TIP_KEY) || '{}');
+        return !!s.dismissed;
+      } catch (_) { return false; }
+    }
+
+    function showShortcutsTip() {
+      if (shortcutsTipDismissed()) return;
+      const isMac = navigator.platform.toLowerCase().includes('mac');
+      // Material Symbols glyphs for modifier keys; Windows falls back to "Ctrl"
+      // text (Material's keyboard_control_key is the ⌃ caret, which Windows
+      // users don't recognize as Ctrl).
+      const modKbd = isMac
+        ? `<kbd><span class="material-symbols">keyboard_command_key</span></kbd>`
+        : `<kbd>Ctrl</kbd>`;
+      shortcutsTipEl.innerHTML = `
+        <div class="st-rows">
+          <div class="st-row">
+            <span class="st-keys">${modKbd}<kbd>G</kbd></span>
+            <span class="st-label">Swap a letter</span>
+          </div>
+          <div class="st-row">
+            <span class="st-keys">${modKbd}<kbd>T</kbd></span>
+            <span class="st-label">Add tashkeel</span>
+          </div>
+        </div>
+        <div class="st-actions">
+          <button class="st-btn" id="shortcuts-tip-dismiss" title="Don't show again">
+            <span class="material-symbols">close</span>
+          </button>
+          <button class="st-btn" id="shortcuts-tip-more" title="See all shortcuts">
+            <span class="material-symbols">open_in_new</span>
+          </button>
+        </div>
+      `;
+      // Anchor: bottom-center of the typing panel (the "middle module").
+      // Falls back to viewport-bottom when typing panels aren't on screen.
+      const typingPanels = document.getElementById('typing-panels');
+      const anchor = typingPanels && !typingPanels.classList.contains('hidden')
+        ? typingPanels.getBoundingClientRect()
+        : { left: 0, right: window.innerWidth, bottom: window.innerHeight - 56, width: window.innerWidth };
+      shortcutsTipEl.classList.add('show');
+      requestAnimationFrame(() => {
+        const tipH = shortcutsTipEl.offsetHeight;
+        const margin = 8;
+        const centerX = anchor.left + anchor.width / 2;
+        let top = anchor.bottom - tipH - 8;
+        top = Math.max(margin, Math.min(top, window.innerHeight - tipH - margin));
+        shortcutsTipEl.style.left = centerX + 'px';
+        shortcutsTipEl.style.top = top + 'px';
+      });
+      const dismiss = document.getElementById('shortcuts-tip-dismiss');
+      if (dismiss) dismiss.addEventListener('click', (e) => {
+        e.stopPropagation();
+        localStorage.setItem(SHORTCUTS_TIP_KEY, JSON.stringify({ dismissed: true }));
+        hideShortcutsTip();
+      });
+      const more = document.getElementById('shortcuts-tip-more');
+      if (more) more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Suppress re-show for the duration of the settings transition. The
+        // input retains its selection range, so without this the mouseup on
+        // the button + the input's stored selection would re-fire the toast.
+        shortcutsTipSuppressUntil = Date.now() + 600;
+        hideShortcutsTip();
+        if (!settingsOpen) toggleSettings();
+        switchSettingsPage('shortcuts');
+      });
+    }
+
+    function hideShortcutsTip() {
+      shortcutsTipEl.classList.remove('show');
+      clearTimeout(shortcutsTipTimer);
+      shortcutsTipTimer = null;
+    }
+
+    let shortcutsTipTimer = null;
+    // Brief grace period after clicking a toast action — during settings
+    // transition the input still has the selection range, so mouseup/keyup
+    // events would otherwise re-fire the toast for a frame before settings
+    // finishes rendering.
+    let shortcutsTipSuppressUntil = 0;
+    // Re-evaluate on every selection change inside the input. The browser
+    // dispatches `select` once a non-empty selection forms; `input` and
+    // `keyup` cover keyboard-driven selection changes that don't fire select.
+    function maybeShowShortcutsTip() {
+      if (shortcutsTipDismissed() || pickerOpen || Date.now() < shortcutsTipSuppressUntil) {
+        hideShortcutsTip();
+        return;
+      }
+      const start = inputEl.selectionStart ?? 0;
+      const end = inputEl.selectionEnd ?? 0;
+      if (end <= start) {
+        hideShortcutsTip();
+        return;
+      }
+      // Debounce so the tip doesn't strobe while the user drags the selection.
+      clearTimeout(shortcutsTipTimer);
+      shortcutsTipTimer = setTimeout(() => {
+        if (shortcutsTipDismissed() || pickerOpen) return;
+        const s = inputEl.selectionStart ?? 0;
+        const e = inputEl.selectionEnd ?? 0;
+        if (e > s) showShortcutsTip();
+      }, 250);
+    }
+
+    inputEl.addEventListener('select', maybeShowShortcutsTip);
+    inputEl.addEventListener('keyup', maybeShowShortcutsTip);
+    inputEl.addEventListener('mouseup', maybeShowShortcutsTip);
+    inputEl.addEventListener('blur', hideShortcutsTip);
 
     // Triggered after the user pauses on a suggestion via keyboard (arrow nav).
     // Mirrors the mouse-hover path so the tip surfaces regardless of input method.

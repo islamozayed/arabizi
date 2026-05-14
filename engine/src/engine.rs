@@ -253,30 +253,38 @@ impl TransliterationEngine {
         // Picking the primary is *not* a no-op: for vowels in middle position the
         // rule-based path would drop the letter, and the user's explicit pick
         // must force it to appear.
+        //
+        // A choice is also accepted when it equals primary/alt followed by one or
+        // more Arabic combining marks (tashkeel): the user can pin "بَ" at a slot
+        // whose primary is "ب". We pass the *original* override (with tashkeel)
+        // into the override-aware path so the marks survive to the output.
         let slots = self.letter_slots(&word_lower);
-        let mut valid: HashMap<usize, &str> = HashMap::new();
+        let mut valid: HashMap<usize, String> = HashMap::new();
         for slot in &slots {
             if let Some(choice) = overrides_by_pos.get(&slot.pos) {
-                for (pattern, primary, alternatives) in PICKER_ALTERNATIVES {
-                    if *pattern == slot.pattern {
-                        if *primary == choice.as_str() {
-                            valid.insert(slot.pos, *primary);
-                        } else {
-                            for alt in *alternatives {
-                                if *alt == choice.as_str() {
-                                    valid.insert(slot.pos, *alt);
-                                    break;
-                                }
-                            }
-                        }
-                        break;
-                    }
+                // An empty-string override means "this Latin slot has been
+                // consumed by a multi-letter Arabic form on a preceding slot"
+                // (e.g. picking خ for the `kh` 2-letter span sets pos 0 = "خ"
+                // and pos 1 = ""). rule_based_with_overrides emits "" and
+                // advances by the slot's pattern length, so the digraph result
+                // shows up exactly once.
+                if choice.is_empty() {
+                    valid.insert(slot.pos, choice.clone());
+                    continue;
+                }
+                let base = strip_tashkeel(choice);
+                let base_matches_primary = base == slot.primary;
+                let base_matches_alt = slot.alternatives.iter().any(|a| *a == base);
+                if base_matches_primary || base_matches_alt {
+                    valid.insert(slot.pos, choice.clone());
                 }
             }
         }
 
         if !valid.is_empty() {
-            let pinned = self.rule_based_with_overrides(&word_lower, &valid);
+            let valid_refs: HashMap<usize, &str> =
+                valid.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            let pinned = self.rule_based_with_overrides(&word_lower, &valid_refs);
             candidates.retain(|c| c != &pinned);
             candidates.insert(0, pinned);
             candidates.truncate(8);
@@ -406,9 +414,50 @@ impl TransliterationEngine {
         out
     }
 
+    /// Convert a string of ASCII digits (with optional `.` / `,`) to Arabic-Indic
+    /// digits. Returns `None` if the token contains any non-digit / non-punct
+    /// char, or if it's a single bare digit (which in Arabizi usually stands
+    /// for a consonant — "7" → ح, "3" → ع — and is handled by the rule-based
+    /// path). Multi-digit tokens like "2026" / "100.5" almost always mean the
+    /// number itself.
+    fn try_digit_token(word: &str) -> Option<String> {
+        let mut digit_count: usize = 0;
+        let mut out = String::with_capacity(word.len() * 2);
+        for c in word.chars() {
+            match c {
+                '0' => { out.push('٠'); digit_count += 1; }
+                '1' => { out.push('١'); digit_count += 1; }
+                '2' => { out.push('٢'); digit_count += 1; }
+                '3' => { out.push('٣'); digit_count += 1; }
+                '4' => { out.push('٤'); digit_count += 1; }
+                '5' => { out.push('٥'); digit_count += 1; }
+                '6' => { out.push('٦'); digit_count += 1; }
+                '7' => { out.push('٧'); digit_count += 1; }
+                '8' => { out.push('٨'); digit_count += 1; }
+                '9' => { out.push('٩'); digit_count += 1; }
+                '.' | ',' => out.push(c),
+                _ => return None,
+            }
+        }
+        // A token made entirely of digits / . / , is always a number. Inside a
+        // word (e.g. "7abibi"), digits stay as Arabizi consonants — that path
+        // never reaches here because the non-digit char makes us return None
+        // above.
+        if digit_count >= 1 { Some(out) } else { None }
+    }
+
     /// Transliterate a single word with optional user preference ranking.
     pub fn transliterate_word_ranked(&self, word: &str, prefs: Option<&UserPreferences>) -> Vec<String> {
         let word = word.to_lowercase();
+
+        // Pure-numeric tokens like "2026" / "100.5" should convert to Arabic-Indic
+        // digits, not be read as consonants (2→ء, 7→ح, etc.). The picker and the
+        // Tab-to-keep-Latin escape both still work because the Latin form is
+        // committed verbatim when the user presses Tab.
+        if let Some(indic) = Self::try_digit_token(&word) {
+            return vec![indic];
+        }
+
         let mut candidates = Vec::new();
         let is_dict_word = self.dictionary.contains_key(&word);
 
@@ -918,6 +967,15 @@ impl TransliterationEngine {
     }
 }
 
+/// Strip Arabic combining-mark code points (tashkeel) from a string. Used when
+/// validating picker overrides so a base-letter override is recognized even
+/// when the user has attached fatha/kasra/damma/shadda/etc.
+fn strip_tashkeel(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(*c as u32, 0x064B..=0x0652 | 0x0670 | 0x0610..=0x061A))
+        .collect()
+}
+
 /// A position in the Latin input where the user can pick from multiple Arabic
 /// letters. `pos` is the starting char index of the matched pattern in the
 /// lowercased input; `pattern` is the Latin sequence (e.g. "z", "th").
@@ -1035,11 +1093,21 @@ mod tests {
     }
 
     #[test]
-    fn number_mappings_work() {
+    fn number_mappings_work_inside_word() {
         let e = engine();
-        let results = e.transliterate_word("7");
+        // Inside a word, '7' must still be the consonant ح.
+        let results = e.transliterate_word("saba7");
         assert!(results.iter().any(|r| r.contains("ح")),
-            "Expected ح for '7', got {:?}", results);
+            "Expected ح inside 'saba7', got {:?}", results);
+    }
+
+    #[test]
+    fn single_bare_digit_is_a_number() {
+        let e = engine();
+        // Standalone "7" is the digit, not the consonant — per the rule that
+        // whole-token digits are numbers, in-word digits are consonants.
+        let results = e.transliterate_word("7");
+        assert_eq!(results, vec!["٧".to_string()]);
     }
 
     #[test]
@@ -1266,6 +1334,73 @@ mod tests {
         let baseline = e.transliterate_word_ranked("salam", None);
         let with_empty = e.transliterate_word_with_overrides("salam", &HashMap::new(), None);
         assert_eq!(baseline, with_empty);
+    }
+
+    #[test]
+    fn digit_token_converts_to_arabic_indic() {
+        let e = engine();
+        let results = e.transliterate_word("2026");
+        assert_eq!(results, vec!["٢٠٢٦".to_string()]);
+    }
+
+    #[test]
+    fn digit_token_with_decimal_point() {
+        let e = engine();
+        let results = e.transliterate_word("100.5");
+        assert_eq!(results, vec!["١٠٠.٥".to_string()]);
+    }
+
+    #[test]
+    fn mixed_digit_letter_still_uses_consonant_mapping() {
+        let e = engine();
+        let results = e.transliterate_word("7abibi");
+        // Should still produce the dictionary form, not Arabic-Indic digits.
+        assert!(results.iter().any(|r| r == "حبيبي"),
+            "expected حبيبي for '7abibi', got {:?}", results);
+    }
+
+    #[test]
+    fn tashkeel_override_pins_with_fatha() {
+        let e = engine();
+        // "bb" → primary بب; override pos 0 with بَ (ba+fatha) should pin بَب.
+        let slots = e.letter_slots("bb");
+        let b0 = slots.iter().find(|s| s.pos == 0).unwrap();
+        assert_eq!(b0.primary, "ب");
+        let mut overrides = HashMap::new();
+        overrides.insert(b0.pos, "بَ".to_string());
+        let results = e.transliterate_word_with_overrides("bb", &overrides, None);
+        assert_eq!(results[0], "بَب",
+            "expected fatha to pin on first ب, got {:?}", results);
+    }
+
+    #[test]
+    fn digraph_span_override_collapses_to_single_letter() {
+        let e = engine();
+        // "kheir" splits into slots k, h, ei, r (engine treats k/h as separate
+        // picker slots even though kh→خ is a digraph). The combined picker
+        // emits {k.pos: "خ", h.pos: ""} so the two Latin slots collapse to خ.
+        let slots = e.letter_slots("kheir");
+        let k = slots.iter().find(|s| s.pattern == "k").unwrap();
+        let h = slots.iter().find(|s| s.pattern == "h").unwrap();
+        let mut overrides = HashMap::new();
+        overrides.insert(k.pos, "خ".to_string());
+        overrides.insert(h.pos, String::new());
+        let results = e.transliterate_word_with_overrides("kheir", &overrides, None);
+        assert_eq!(results[0], "خير",
+            "expected خير from digraph span override, got {:?}", results);
+    }
+
+    #[test]
+    fn tashkeel_override_with_shadda_kasra() {
+        let e = engine();
+        let slots = e.letter_slots("salam");
+        let s_slot = slots.iter().find(|s| s.pattern == "s").unwrap();
+        let mut overrides = HashMap::new();
+        // shadda + kasra on س
+        overrides.insert(s_slot.pos, "سِّ".to_string());
+        let results = e.transliterate_word_with_overrides("salam", &overrides, None);
+        assert!(results[0].contains("سِّ") || results[0].contains("سّ"),
+            "expected shadda+kasra to survive on س, got {:?}", results);
     }
 
     #[test]

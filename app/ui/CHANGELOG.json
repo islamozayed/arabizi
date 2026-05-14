@@ -1,6 +1,18 @@
 {
   "versions": [
     {
+      "version": "0.3.0-dev",
+      "date": "2026-05-14",
+      "title": "Starter words, auto-lock, numbers, tashkeel picker (WIP — bundles with dictionary upgrade for v1.0)",
+      "items": [
+        "<strong>Starter words:</strong> the empty-widget view now shows your go-to phrases. <kbd>↵</kbd> pastes, <kbd>Tab</kbd> seeds a sentence so you can keep typing.",
+        "<strong>Auto-engage word lock:</strong> highlight a committed word to edit it and your previous letter-pick choices come back automatically — no more re-pressing <kbd>Cmd</kbd>+<kbd>G</kbd>.",
+        "<strong>Numbers convert to Arabic-Indic:</strong> type <code>2026</code> → ٢٠٢٦. Press <kbd>Tab</kbd> on the suggestion to keep the English form. Single bare digits (<code>3</code>, <code>7</code>) still mean ع / ح.",
+        "<strong>Two-letter <kbd>Cmd</kbd>+<kbd>G</kbd>:</strong> select two adjacent letters in the input before opening the picker to pick alternates for both at once.",
+        "<strong>Tashkeel picker:</strong> <kbd>Cmd</kbd>+<kbd>T</kbd> (<kbd>Ctrl</kbd>+<kbd>T</kbd>) on a letter shows all diacritic options — fatha, kasra, damma, sukun, shadda combos, tanween."
+      ]
+    },
+    {
       "version": "0.2.0",
       "date": "2026-05-03",
       "title": "Letter picker — swap a single Arabic letter without retyping",

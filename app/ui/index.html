@@ -205,12 +205,20 @@
     .tips-panel {
       flex: 1;
       gap: 4px;
-      overflow-y: auto;
+      overflow: hidden;
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
     }
     .tips-panel:active { cursor: grabbing; }
+
+    /* Kill the WebView2 scrollbar everywhere inside the widget — content is
+       designed to fit the fixed window size; any scroll affordance looks
+       tacked-on and clips against the rounded corners. */
+    #content ::-webkit-scrollbar,
+    #content ::-webkit-scrollbar-track,
+    #content ::-webkit-scrollbar-thumb { width: 0; height: 0; background: transparent; }
+    #content * { scrollbar-width: none; }
 
     .mapping-section-label {
       font-size: 10px;
@@ -252,6 +260,72 @@
     .mapping-val {
       font: 17px var(--font-ar);
       color: var(--text-primary);
+    }
+
+    /* Starter words (landing) */
+    .starter-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4px 6px;
+      margin-top: 4px;
+    }
+
+    .starter-chip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 5px;
+      background: transparent;
+      cursor: pointer;
+      transition: background 0.06s, outline-color 0.06s;
+      outline: 1px solid transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .starter-chip:hover,
+    .starter-chip.selected {
+      background: var(--accent);
+      outline-color: var(--hint-example-outline);
+    }
+
+    .starter-chip .starter-ar {
+      font: 16px var(--font-ar);
+      color: var(--text-primary);
+      margin-left: auto;
+    }
+
+    /* Per-chip keyboard hint: revealed only on hover or when the chip is the
+       selected one. Keeps the landing view uncluttered and pairs the affordance
+       with the element it acts on. */
+    .starter-chip .starter-chip-kbd {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      opacity: 0;
+      pointer-events: none;
+      font: 9px/1 var(--font);
+      color: rgba(255, 255, 255, 0.92);
+      letter-spacing: 0.2px;
+      transition: opacity 0.08s;
+    }
+    .starter-chip:hover .starter-chip-kbd,
+    .starter-chip.selected .starter-chip-kbd {
+      opacity: 1;
+    }
+    .starter-chip .starter-chip-kbd kbd {
+      display: inline-block;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.18);
+      font: 9px var(--font);
+      color: #fff;
+    }
+    .starter-chip .starter-chip-kbd .sep {
+      opacity: 0.55;
+      margin: 0 3px;
     }
 
     /* Typing panels (suggestions + preview) */
@@ -357,17 +431,22 @@
       align-items: center;
       gap: 4px;
       padding: 4px;
-      background: var(--bg-surface);
+      /* Very low alpha + 20px blur so the panel labels underneath read clearly
+         as blurred glass behind the picker. */
+      background: var(--picker-bg, rgba(28, 28, 30, 0.18));
       border: 1px solid var(--outline);
       border-radius: var(--radius);
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
       direction: rtl;
       font: 16px/1 var(--font-ar);
       color: var(--text-primary);
       user-select: none;
       -webkit-user-select: none;
+    }
+    [data-theme="light"] .letter-picker {
+      background: var(--picker-bg-light, rgba(255, 255, 255, 0.28));
     }
     .letter-picker.hidden { display: none; }
     .letter-picker .lp-chip {
@@ -400,6 +479,21 @@
       font: 11px/1 var(--font);
       color: var(--text-tertiary);
       padding: 0 6px;
+    }
+    .letter-picker .lp-latin-focused {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .letter-picker .lp-mode {
+      font: 9px/1 var(--font);
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 2px 5px;
+      border: 1px solid var(--accent);
+      border-radius: 3px;
+      margin-right: 2px;
+      direction: ltr;
     }
 
     /* ── Cmd+G hover tip ── */
@@ -522,12 +616,20 @@
 
     .preview-text .committed-word {
       cursor: pointer;
-      border-radius: 4px;
-      padding: 0 4px;
-      transition: background 0.08s;
+      border-radius: 6px;
+      /* Vertical padding accounts for ascenders (e.g. ل, ك) and descenders
+         (e.g. ي, ج) on Arabic glyphs that otherwise clip against the hover
+         outline. */
+      padding: 4px 6px;
+      transition: background 0.08s, outline-color 0.08s;
+      outline: 1px solid transparent;
+      display: inline-block;
     }
 
-    .preview-text .committed-word:hover { background: var(--item-hover); }
+    .preview-text .committed-word:hover {
+      background: var(--item-hover);
+      outline-color: var(--outline);
+    }
     .preview-text .committed-word.editing { background: var(--accent-translucent); }
 
     .preview-committed-hint {
@@ -1322,25 +1424,8 @@
     <div class="content" id="content">
       <!-- Landing: Tips -->
       <div class="panel tips-panel" id="tips-panel">
-        <div class="mapping-section-label">Number mappings</div>
-        <div class="mapping-grid">
-          <div class="mapping-item"><span class="mapping-key">2</span><span class="mapping-arrow">→</span><span class="mapping-val">ء</span></div>
-          <div class="mapping-item"><span class="mapping-key">3</span><span class="mapping-arrow">→</span><span class="mapping-val">ع</span></div>
-          <div class="mapping-item"><span class="mapping-key">5</span><span class="mapping-arrow">→</span><span class="mapping-val">خ</span></div>
-          <div class="mapping-item"><span class="mapping-key">6</span><span class="mapping-arrow">→</span><span class="mapping-val">ط</span></div>
-          <div class="mapping-item"><span class="mapping-key">7</span><span class="mapping-arrow">→</span><span class="mapping-val">ح</span></div>
-          <div class="mapping-item"><span class="mapping-key">8</span><span class="mapping-arrow">→</span><span class="mapping-val">ق</span></div>
-          <div class="mapping-item"><span class="mapping-key">9</span><span class="mapping-arrow">→</span><span class="mapping-val">ص</span></div>
-        </div>
-        <div class="mapping-section-label">Letter combos</div>
-        <div class="mapping-grid">
-          <div class="mapping-item"><span class="mapping-key">sh</span><span class="mapping-arrow">→</span><span class="mapping-val">ش</span></div>
-          <div class="mapping-item"><span class="mapping-key">kh</span><span class="mapping-arrow">→</span><span class="mapping-val">خ</span></div>
-          <div class="mapping-item"><span class="mapping-key">gh</span><span class="mapping-arrow">→</span><span class="mapping-val">غ</span></div>
-          <div class="mapping-item"><span class="mapping-key">th</span><span class="mapping-arrow">→</span><span class="mapping-val">ث</span></div>
-          <div class="mapping-item"><span class="mapping-key">dh</span><span class="mapping-arrow">→</span><span class="mapping-val">ذ</span></div>
-          <div class="mapping-item"><span class="mapping-key">3'</span><span class="mapping-arrow">→</span><span class="mapping-val">غ</span></div>
-        </div>
+        <div class="mapping-section-label">Quick start</div>
+        <div class="starter-grid" id="starter-grid"></div>
       </div>
 
       <!-- Typing: Suggestions + Preview -->
@@ -1513,6 +1598,7 @@
     const inputEl = document.getElementById('arabizi-input');
     const inputHint = document.getElementById('input-hint');
     const tipsPanel = document.getElementById('tips-panel');
+    const starterGrid = document.getElementById('starter-grid');
     const typingPanels = document.getElementById('typing-panels');
     const settingsPanel = document.getElementById('settings-panel');
     const suggestionList = document.getElementById('suggestion-list');
@@ -1557,8 +1643,41 @@
     let emojiMode = false;
     let selectedEmojiIdx = 0;
     let editingWordIdx = -1;
+    let editingPin = null;         // Arabic candidate to pin while editing
     let settingsOpen = false;
     let activeSettingsPage = 'appearance';
+
+    // ── Starter words (landing view quick-paste) ──
+    // Defaults are the most common sentence starters in chat. Stored in
+    // localStorage so a future settings UI can edit the list without code
+    // changes. The widget falls back to these whenever the stored list is
+    // missing or unparseable.
+    const DEFAULT_STARTERS = [
+      { ar: 'سلام',         input: 'salam' },
+      { ar: 'أهلاً',         input: 'ahlan' },
+      { ar: 'مرحبًا',        input: 'marhaba' },
+      { ar: 'صباح الخير',   input: 'sabah el kheir' },
+      { ar: 'مساء الخير',   input: 'masa el kheir' },
+      { ar: 'شكرًا',        input: 'shukran' },
+      { ar: 'إن شاء الله',  input: 'inshallah' },
+      { ar: 'ما شاء الله',  input: 'mashallah' },
+      { ar: 'الحمد لله',    input: 'alhamdulillah' },
+      { ar: 'يلا',          input: 'yalla' },
+    ];
+    function loadStarters() {
+      try {
+        const raw = localStorage.getItem('arabizi-starters');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.every(s => typeof s?.ar === 'string')) {
+            return parsed;
+          }
+        }
+      } catch (_) { /* fall through */ }
+      return DEFAULT_STARTERS;
+    }
+    let starters = loadStarters();
+    let selectedStarterIdx = -1;     // -1 = none focused, ≥0 = focused chip
 
     // ── Drag-to-move in middle panels ──
     // Suggestions/preview panels and the tips panel act as drag handles, except
@@ -2092,7 +2211,9 @@
       emojiMode = false;
       selectedEmojiIdx = 0;
       editingWordIdx = -1;
+      editingPin = null;
       settingsOpen = false;
+      selectedStarterIdx = -1;
       closeColorPicker();
       inputEl.value = '';
       renderAll();
@@ -2114,6 +2235,11 @@
         if (!currentInput) {
           currentCandidates = [];
           currentEmojis = [];
+          // Emptying the input ends the lock: whatever the user pinned was
+          // tied to the prior spelling. Without this, tabbing a starter then
+          // backspacing through it would leave the starter glued to the top
+          // of suggestions for any new word they type.
+          editingPin = null;
           selectedIdx = 0;
           emojiMode = false;
           selectedEmojiIdx = 0;
@@ -2150,6 +2276,7 @@
           currentCandidates = [];
           currentEmojis = [];
         }
+        applyEditingPin();
         selectedIdx = 0;
         emojiMode = false;
         selectedEmojiIdx = 0;
@@ -2163,8 +2290,56 @@
       // Captured early so it wins against any browser default.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault();
-        if (currentInput) await openPicker();
+        if (currentInput) await openPicker('letter');
         return;
+      }
+
+      // Cmd+T / Ctrl+T: tashkeel (diacritic) picker — same picker UI, different
+      // chip pool (fatha/kasra/damma/sukun/shadda + tanweens).
+      if ((e.metaKey || e.ctrlKey) && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        if (currentInput) await openPicker('tashkeel');
+        return;
+      }
+
+      // Landing view: starter-word navigation when the input is empty (and
+      // we're not in settings / picker). Works whether or not the user has
+      // already committed something — the starters live on the landing panel
+      // and only show when the input is clear, so by definition there's
+      // nothing else to act on here.
+      const onLanding = !currentInput && !settingsOpen && committedWords.length === 0;
+      if (onLanding && starters.length > 0 && !pickerOpen) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+            e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          const cols = 2;
+          if (selectedStarterIdx < 0) {
+            selectedStarterIdx = 0;
+          } else if (e.key === 'ArrowRight') {
+            selectedStarterIdx = Math.max(0, selectedStarterIdx - 1);
+          } else if (e.key === 'ArrowLeft') {
+            selectedStarterIdx = Math.min(starters.length - 1, selectedStarterIdx + 1);
+          } else if (e.key === 'ArrowDown') {
+            selectedStarterIdx = Math.min(starters.length - 1, selectedStarterIdx + cols);
+          } else if (e.key === 'ArrowUp') {
+            selectedStarterIdx = Math.max(0, selectedStarterIdx - cols);
+          }
+          renderStarters();
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Default to the first starter so the user doesn't have to nav first.
+          const idx = selectedStarterIdx >= 0 ? selectedStarterIdx : 0;
+          await pasteStarter(idx);
+          return;
+        }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const idx = selectedStarterIdx >= 0 ? selectedStarterIdx : 0;
+          seedStarter(idx);
+          return;
+        }
       }
 
       // Cmd+Z / Ctrl+Z: if we have picker history, undo the last picker action
@@ -2184,12 +2359,10 @@
       // Picker-mode key handling: arrows/tab/enter operate on the picker
       // instead of the suggestion list.
       if (pickerOpen) {
-        const slot = letterSlots[pickerSlotIdx];
-        const altCount = slot ? slot.alternatives.length : 0;
+        const total = pickerChips.length;
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
           e.preventDefault();
-          if (altCount > 0) {
-            const total = 1 + altCount;
+          if (total > 0) {
             // RTL picker: ArrowRight moves visually rightward (toward lower index).
             const dir = e.key === 'ArrowRight' ? -1 : 1;
             pickerAltIdx = (pickerAltIdx + dir + total) % total;
@@ -2199,20 +2372,31 @@
         }
         if (e.key === 'Tab') {
           e.preventDefault();
-          if (letterSlots.length > 1) {
-            const dir = e.shiftKey ? 1 : -1;
-            pickerSlotIdx = (pickerSlotIdx + dir + letterSlots.length) % letterSlots.length;
-            const next = letterSlots[pickerSlotIdx];
-            const current = letterOverrides[next.pos] || next.primary;
-            const chips = [next.primary, ...next.alternatives];
-            pickerAltIdx = Math.max(0, chips.indexOf(current));
+          // Single-slot picker: Tab walks the picker focus across all word
+          // slots. Multi-slot picker stays put — its chips already cover the
+          // full combined alternative space.
+          if (pickerSlotIndices.length === 1 && letterSlots.length > 1) {
+            const dir = e.shiftKey ? -1 : 1;
+            const cur = pickerSlotIndices[0];
+            const idx = (cur + dir + letterSlots.length) % letterSlots.length;
+            pickerSlotIndices = [idx];
+            pickerChips = buildPickerChips();
+            const focused = pickerChips.findIndex(chip => {
+              for (const [pos, val] of Object.entries(chip.picks)) {
+                const current = letterOverrides[Number(pos)] ||
+                  letterSlots.find(s => s.pos === Number(pos))?.primary;
+                if (current !== val) return false;
+              }
+              return true;
+            });
+            pickerAltIdx = focused >= 0 ? focused : 0;
             renderPicker();
           }
           return;
         }
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (altCount > 0) await commitPickerSelection();
+          if (total > 0) await commitPickerSelection();
           else closePicker();
           return;
         }
@@ -2231,6 +2415,7 @@
           inputEl.focus();
         } else if (editingWordIdx >= 0) {
           editingWordIdx = -1;
+          editingPin = null;
           inputEl.value = '';
           currentCandidates = [];
           currentInput = '';
@@ -2259,6 +2444,7 @@
           } else if (selectedIdx < currentCandidates.length - 1) {
             selectedIdx++;
           }
+          await pinSelectedSuggestion();
           renderSuggestions();
           renderPreview();
           scheduleCmdgTipForSelected();
@@ -2283,6 +2469,7 @@
           } else if (selectedIdx > 0) {
             selectedIdx--;
           }
+          await pinSelectedSuggestion();
           renderSuggestions();
           renderPreview();
           scheduleCmdgTipForSelected();
@@ -2319,6 +2506,7 @@
         } else {
           committedWords.push({ input: raw, arabic: raw, candidates: [raw], emojis: [] });
         }
+        editingPin = null;
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
@@ -2351,6 +2539,7 @@
         } else {
           committedWords.pop();
         }
+        editingPin = null;
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
@@ -2370,6 +2559,7 @@
           e.preventDefault();
           committedWords.splice(editingWordIdx, 1);
           editingWordIdx = -1;
+          editingPin = null;
           currentInput = '';
           currentCandidates = [];
           currentEmojis = [];
@@ -2412,11 +2602,15 @@
         arabic = currentCandidates[selectedIdx] || currentCandidates[0] || currentInput;
       }
       invoke('record_selection', { input: currentInput, arabic });
+      // Snapshot the override map so re-editing this word later auto-engages
+      // the same letter locks — that's the "auto word lock" behavior the user
+      // sees when they highlight a committed word and change its spelling.
+      const overridesForWord = { ...letterOverrides };
       if (editingWordIdx >= 0) {
-        committedWords[editingWordIdx] = { input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis };
+        committedWords[editingWordIdx] = { input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis, overrides: overridesForWord };
         editingWordIdx = -1;
       } else {
-        committedWords.push({ input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis });
+        committedWords.push({ input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis, overrides: overridesForWord });
       }
       clearTimeout(debounce);
       inputEl.value = '';
@@ -2426,7 +2620,9 @@
       selectedIdx = 0;
       emojiMode = false;
       selectedEmojiIdx = 0;
-      // The lock dies with the word; next word starts fresh.
+      editingPin = null;
+      // The lock dies with the word; next word starts fresh (and the snapshot
+      // above means re-editing the just-committed word restores it).
       clearOverrides();
       closePicker();
       hideCmdgTip();
@@ -2441,19 +2637,125 @@
       const w = committedWords[idx];
       inputEl.value = w.input;
       currentInput = w.input;
-      currentCandidates = w.candidates;
+      currentCandidates = [...w.candidates];
       currentEmojis = w.emojis || [];
-      selectedIdx = w.candidates.indexOf(w.arabic);
-      if (selectedIdx < 0) selectedIdx = 0;
+      // Auto-engage the lock: the previously-committed Arabic stays pinned at
+      // the top of the suggestion list while the user reshapes the spelling.
+      // Combined with letterOverrides (below), this means highlighting a word
+      // is enough — no more re-pressing Cmd+G to keep the same result.
+      editingPin = w.arabic;
+      applyEditingPin();
+      selectedIdx = 0;
       emojiMode = false;
       selectedEmojiIdx = 0;
+      letterOverrides = { ...(w.overrides || {}) };
+      letterSlots = [];
+      pickerHistory = [];
       updateInputHint();
       renderAll();
       inputEl.focus();
       inputEl.select();
     };
 
-    window.pickCandidate = function(idx) {
+    // Push `editingPin` to the top of currentCandidates, inserting if missing.
+    // Called after every suggestion refresh while a pin is active so the lock
+    // survives spelling changes.
+    function applyEditingPin() {
+      if (!editingPin) return;
+      const idx = currentCandidates.indexOf(editingPin);
+      if (idx > 0) {
+        currentCandidates.splice(idx, 1);
+        currentCandidates.unshift(editingPin);
+      } else if (idx < 0) {
+        currentCandidates.unshift(editingPin);
+        if (currentCandidates.length > 8) currentCandidates.length = 8;
+      }
+    }
+
+    // Engage the auto-lock by snapshotting whichever suggestion the user has
+    // navigated to. Subsequent spelling edits will keep that Arabic word at
+    // the top of the list (or insert it if it falls out). Called after
+    // ArrowUp/Down and on click — anywhere the user explicitly picks a
+    // suggestion other than implicitly accepting #1.
+    async function pinSelectedSuggestion() {
+      if (emojiMode) return;
+      const candidate = currentCandidates[selectedIdx];
+      if (!candidate) return;
+      editingPin = candidate;
+      // Best-effort: align the Arabic candidate against the input's letter
+      // slots and turn any per-position differences into letterOverrides.
+      // Without this, picking مصوء (ص over the default س) wouldn't carry over
+      // to fresh candidates after spelling tweaks — the engine would happily
+      // suggest variants with س again, ث, etc.
+      try {
+        const slots = await invoke('letter_slots', { word: currentInput });
+        const derived = deriveOverridesFromCandidate(slots, candidate);
+        if (derived) {
+          letterOverrides = derived;
+          letterSlots = slots;
+        }
+      } catch (_) { /* alignment failures fall back to string-pin only */ }
+    }
+
+    // Walk letter slots left-to-right and consume `arabic` char-by-char. When
+    // a slot's primary or one of its alternatives (optionally with trailing
+    // tashkeel marks) matches the next chunk, that's our pick. Returns the
+    // override map (non-primary picks only) or null if alignment fails.
+    // Short vowels are commonly dropped by the engine's DropMiddle mode, so
+    // we tolerate "no match" on vowel slots and move on without consuming.
+    function deriveOverridesFromCandidate(slots, arabic) {
+      const out = {};
+      let ai = 0;
+      const isMark = c => {
+        const cp = c.codePointAt(0);
+        return (cp >= 0x064B && cp <= 0x0652) || cp === 0x0670 ||
+               (cp >= 0x0610 && cp <= 0x061A);
+      };
+      const consumeTrailingMarks = start => {
+        let end = start;
+        while (end < arabic.length && isMark(arabic[end])) end++;
+        return end;
+      };
+      for (const slot of slots) {
+        const options = [slot.primary, ...slot.alternatives];
+        let matched = null;
+        let matchLen = 0;
+        for (const opt of options) {
+          if (opt && arabic.startsWith(opt, ai)) {
+            const end = consumeTrailingMarks(ai + opt.length);
+            matched = arabic.slice(ai, end);
+            matchLen = end - ai;
+            break;
+          }
+        }
+        if (matched) {
+          if (matched !== slot.primary) out[slot.pos] = matched;
+          ai += matchLen;
+          continue;
+        }
+        // Vowel that the engine dropped in the middle of the word — that's fine,
+        // skip without consuming anything from the candidate.
+        if (/^[aeiou]+$/i.test(slot.pattern)) continue;
+        // Anything else means our alignment is off; bail out and let the
+        // string-pin fallback handle this candidate.
+        return null;
+      }
+      // Trailing tashkeel / tanween on the final letter is allowed.
+      if (consumeTrailingMarks(ai) !== arabic.length) return null;
+      return out;
+    }
+
+    // Single click on a suggestion: select it AND engage the auto-lock so any
+    // further spelling tweaks keep this Arabic at the top. Double click is the
+    // mouse shortcut for "commit now". (Matches the starter chip pattern —
+    // one click selects, two clicks confirm.)
+    window.pickCandidate = async function(idx) {
+      selectedIdx = idx;
+      await pinSelectedSuggestion();
+      renderSuggestions();
+      renderPreview();
+    };
+    window.confirmCandidate = function(idx) {
       selectedIdx = idx;
       confirmCurrentWord();
     };
@@ -2499,6 +2801,70 @@
       tipsPanel.classList.toggle('hidden', view !== 'landing');
       typingPanels.classList.toggle('hidden', view !== 'typing');
       settingsPanel.classList.toggle('hidden', view !== 'settings');
+      if (view === 'landing') {
+        renderStarters();
+      } else if (selectedStarterIdx !== -1) {
+        selectedStarterIdx = -1;
+      }
+    }
+
+    function renderStarters() {
+      if (!starterGrid) return;
+      const kbdHtml = '<span class="starter-chip-kbd"><kbd>↵</kbd>paste<span class="sep">·</span><kbd>Tab</kbd>new</span>';
+      starterGrid.innerHTML = starters.map((s, i) => {
+        const sel = i === selectedStarterIdx ? 'selected' : '';
+        return `<div class="starter-chip ${sel}" data-idx="${i}" role="button" tabindex="-1">${kbdHtml}<span class="starter-ar"></span></div>`;
+      }).join('');
+      starterGrid.querySelectorAll('.starter-chip').forEach((chip) => {
+        const idx = parseInt(chip.dataset.idx, 10);
+        chip.querySelector('.starter-ar').textContent = starters[idx].ar;
+        // Hover and single-click both *select* — they no longer commit. Enter
+        // pastes the selected starter, Tab seeds it. Double-click is the
+        // mouse-only shortcut for paste.
+        chip.addEventListener('mouseenter', () => {
+          if (selectedStarterIdx !== idx) {
+            selectedStarterIdx = idx;
+            renderStarters();
+          }
+        });
+        chip.addEventListener('click', () => {
+          selectedStarterIdx = idx;
+          renderStarters();
+        });
+        chip.addEventListener('dblclick', () => {
+          pasteStarter(idx);
+        });
+      });
+    }
+
+    async function pasteStarter(idx) {
+      const s = starters[idx];
+      if (!s) return;
+      await writeText(s.ar);
+      await invoke('hide_and_paste');
+    }
+
+    function seedStarter(idx) {
+      const s = starters[idx];
+      if (!s) return;
+      committedWords.push({
+        input: s.input || s.ar,
+        arabic: s.ar,
+        candidates: [s.ar],
+        emojis: [],
+        overrides: {},
+      });
+      selectedStarterIdx = -1;
+      inputEl.value = '';
+      currentInput = '';
+      currentCandidates = [];
+      currentEmojis = [];
+      selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
+      updateInputHint();
+      renderAll();
+      inputEl.focus();
     }
 
     function renderAll() {
@@ -2533,10 +2899,10 @@
         : '';
 
       let html = '';
-      const showLock = hasOverrides();
+      const showLock = hasOverrides() || editingPin !== null;
       currentCandidates.forEach((c, i) => {
         const lock = (showLock && i === 0) ? lockBadgeSvg : '';
-        html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})">
+        html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})" ondblclick="confirmCandidate(${i})">
           ${lock}
           <div class="ar">${c}</div>
         </div>`;
@@ -2564,19 +2930,29 @@
           const current = emojiMode && currentEmojis.length > 0
             ? (currentEmojis[selectedEmojiIdx] || currentEmojis[0])
             : (currentCandidates[selectedIdx] || currentCandidates[0]);
-          parts.push(`<span class="committed-word editing" onclick="editWord(${i})">${current}</span>`);
+          parts.push(`<span class="committed-word editing" data-idx="${i}">${escapeHtml(current)}</span>`);
         } else {
-          parts.push(`<span class="committed-word" onclick="editWord(${i})">${committedWords[i].arabic}</span>`);
+          parts.push(`<span class="committed-word" data-idx="${i}">${escapeHtml(committedWords[i].arabic)}</span>`);
         }
       }
       if (editingWordIdx < 0 && (currentCandidates.length > 0 || emojiMode)) {
         const current = emojiMode && currentEmojis.length > 0
           ? (currentEmojis[selectedEmojiIdx] || currentEmojis[0])
           : (currentCandidates[selectedIdx] || currentCandidates[0]);
-        parts.push(`<span>${current}</span>`);
+        parts.push(`<span>${escapeHtml(current)}</span>`);
       }
       previewText.innerHTML = parts.join(' ');
       previewText.scrollTop = previewText.scrollHeight;
+      // Bind clicks explicitly. Inline onclick attributes were getting
+      // swallowed by the drag-region mousedown handler in some cases — using
+      // addEventListener with the same DOM the drag handler whitelists makes
+      // the routing unambiguous.
+      previewText.querySelectorAll('.committed-word').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.idx, 10);
+          if (!Number.isNaN(idx)) editWord(idx);
+        });
+      });
     }
 
     // ── Init ──
@@ -2602,8 +2978,56 @@
     let letterOverrides = {};      // { latinPos: arabicLetter }
     let pickerHistory = [];        // stack of letterOverrides snapshots for Cmd+Z
     let pickerOpen = false;
-    let pickerSlotIdx = 0;         // which entry in letterSlots is active
-    let pickerAltIdx = 0;          // which chip is highlighted
+    let pickerMode = 'letter';     // 'letter' (Cmd+G) or 'tashkeel' (Cmd+T)
+    // Multi-slot picker: pickerSlotIndices holds 1+ adjacent slot indices the
+    // user has selected (range selection in the input). When 2+ slots are
+    // selected the picker shows COMBINED Arabic chips (cartesian product of
+    // each slot's options) and committing applies overrides to every slot in
+    // the span at once. Single-slot reduces to the trivial case.
+    let pickerSlotIndices = [];
+    let pickerAltIdx = 0;          // index into pickerChips
+    let pickerChips = [];          // [{ display, picks: { [slotPos]: arabicLetter } }]
+
+    // Arabic combining marks. Single-mark options plus shadda-combined forms.
+    // Order matters for the UI — most common first.
+    const TASHKEEL_OPTIONS = [
+      { label: 'none',         marks: '' },
+      { label: 'fatha',        marks: 'َ' },
+      { label: 'kasra',        marks: 'ِ' },
+      { label: 'damma',        marks: 'ُ' },
+      { label: 'sukun',        marks: 'ْ' },
+      { label: 'shadda',       marks: 'ّ' },
+      { label: 'shadda+fatha', marks: 'َّ' },
+      { label: 'shadda+kasra', marks: 'ِّ' },
+      { label: 'shadda+damma', marks: 'ُّ' },
+      { label: 'tanween fath', marks: 'ً' },
+      { label: 'tanween kasr', marks: 'ٍ' },
+      { label: 'tanween damm', marks: 'ٌ' },
+    ];
+
+    // Digraphs that map a 2- or 3-Latin-letter span to a single Arabic letter.
+    // Mirrors CONSONANT_MAPPINGS in the engine — used to prepend a digraph chip
+    // to the combined picker when the selected span exactly matches a known
+    // digraph (e.g. `kh` → خ alongside the cartesian product). Each entry can
+    // also include alternates pulled from the picker table.
+    const DIGRAPHS = {
+      'tch': ['تش'],
+      'sh':  ['ش'],
+      'ch':  ['ش', 'تش'],
+      'kh':  ['خ'],
+      'th':  ['ث', 'ذ'],
+      'dh':  ['ذ', 'ض', 'ظ'],
+      'gh':  ['غ'],
+      'ph':  ['ف'],
+    };
+
+    function stripTashkeel(s) {
+      return Array.from(s || '').filter(c => {
+        const cp = c.codePointAt(0);
+        return !(cp >= 0x064B && cp <= 0x0652) && cp !== 0x0670 &&
+               !(cp >= 0x0610 && cp <= 0x061A);
+      }).join('');
+    }
     // Phosphor "Lock" (regular weight) — fill follows currentColor, so the badge
     // tracks light/dark theme via .suggestion .lock-badge { color: ... }.
     let lockBadgeSvg = '<svg class="lock-badge" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true"><path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Zm-68-56a12,12,0,1,1-12-12A12,12,0,0,1,140,152Z"/></svg>';
@@ -2657,29 +3081,33 @@
     }
 
     function renderPicker() {
-      if (!pickerOpen || letterSlots.length === 0) {
+      if (!pickerOpen || letterSlots.length === 0 || pickerSlotIndices.length === 0) {
         pickerEl.classList.add('hidden');
         return;
       }
-      const slot = letterSlots[pickerSlotIdx];
-      if (!slot) {
-        pickerEl.classList.add('hidden');
-        return;
-      }
-      const hasAlts = slot.alternatives.length > 0;
-      const chips = [slot.primary, ...slot.alternatives];
-      const chipsHtml = chips.map((c, i) => {
-        const sel = hasAlts && i === pickerAltIdx ? 'selected' : '';
-        const dis = !hasAlts ? 'disabled' : '';
-        return `<div class="lp-chip ${sel} ${dis}" data-idx="${i}">${c}</div>`;
+      const label = pickerSlotIndices
+        .map(si => letterSlots[si]?.pattern || '')
+        .join('');
+      const labelHtml = `<span class="lp-latin">${escapeHtml(label)}</span>`;
+
+      // Distinguish "tashkeel offers 12 chips" from "letter slot with no
+      // alternatives" — the latter still renders the primary but disables click.
+      const allHaveAlts = pickerMode === 'tashkeel' ||
+        pickerSlotIndices.some(si => letterSlots[si]?.alternatives.length > 0);
+      const hasChips = pickerChips.length > 0 && allHaveAlts;
+      const chipsHtml = pickerChips.map((chip, i) => {
+        const sel = hasChips && i === pickerAltIdx ? 'selected' : '';
+        const dis = !hasChips ? 'disabled' : '';
+        return `<div class="lp-chip ${sel} ${dis}" data-idx="${i}">${escapeHtml(chip.display)}</div>`;
       }).join('');
-      const tail = hasAlts ? '' : '<span class="lp-empty">no alternatives</span>';
-      pickerEl.innerHTML = `<span class="lp-latin">${slot.pattern}</span>${chipsHtml}${tail}`;
+      const tail = hasChips ? '' : '<span class="lp-empty">no alternatives</span>';
+      const modeTag = pickerMode === 'tashkeel' ? '<span class="lp-mode">tashkeel</span>' : '';
+      pickerEl.innerHTML = `${modeTag}${labelHtml}${chipsHtml}${tail}`;
       pickerEl.classList.remove('hidden');
-      if (hasAlts) {
-        pickerEl.querySelectorAll('.lp-chip').forEach(chip => {
-          chip.addEventListener('click', () => {
-            pickerAltIdx = parseInt(chip.dataset.idx, 10);
+      if (hasChips) {
+        pickerEl.querySelectorAll('.lp-chip').forEach(chipEl => {
+          chipEl.addEventListener('click', () => {
+            pickerAltIdx = parseInt(chipEl.dataset.idx, 10);
             commitPickerSelection();
           });
         });
@@ -2687,11 +3115,17 @@
       positionPicker();
     }
 
-    // Pick the slot the user is "pointing at" using the input's cursor /
-    // text-selection. Selection range overlapping a slot wins; otherwise the
-    // slot containing the caret, else the nearest preceding slot, else the
-    // last slot.
-    function slotIdxFromSelection(slots) {
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
+    // Pick which slots the user is "pointing at" using the input's
+    // cursor / text-selection. Range selection covering 2+ slots opens the
+    // multi-slot picker; a caret or single-slot range opens a single-slot
+    // picker. Returns an array of slot indices (non-empty when slots is non-empty).
+    function slotIdxsFromSelection(slots) {
       // Translate raw-input cursor positions to trimmed-input space (currentInput
       // is `raw.trim()`, slot positions are based on that).
       const raw = inputEl.value;
@@ -2701,12 +3135,14 @@
       const selStart = Math.max(0, rawStart - leading);
       const selEnd = Math.max(selStart, rawEnd - leading);
 
-      // Range selection: first slot that overlaps.
+      // Range selection: every slot that overlaps the range.
       if (selEnd > selStart) {
+        const overlapping = [];
         for (let i = 0; i < slots.length; i++) {
           const s = slots[i];
-          if (s.pos < selEnd && s.pos + s.pattern.length > selStart) return i;
+          if (s.pos < selEnd && s.pos + s.pattern.length > selStart) overlapping.push(i);
         }
+        if (overlapping.length > 0) return overlapping;
       }
       // Caret: slot containing or ending at caret, else nearest preceding.
       let containing = -1;
@@ -2716,45 +3152,125 @@
         const end = s.pos + s.pattern.length;
         if (s.pos < selStart && end >= selStart) containing = i;
         if (s.pos < selStart) preceding = i;
-        if (s.pos === selStart) return i; // caret right before this slot
+        if (s.pos === selStart) return [i]; // caret right before this slot
       }
-      if (containing >= 0) return containing;
-      if (preceding >= 0) return preceding;
-      return slots.length - 1;
+      if (containing >= 0) return [containing];
+      if (preceding >= 0) return [preceding];
+      return [slots.length - 1];
     }
 
-    async function openPicker() {
+    function currentSlotBaseLetter(slot) {
+      const ov = letterOverrides[slot.pos];
+      if (ov) return stripTashkeel(ov);
+      return slot.primary;
+    }
+
+    // Build the chip list for the active picker invocation. Each chip carries
+    // the per-slot picks it would apply on commit so a single click/Enter can
+    // override every selected slot at once.
+    //   letter mode + N slots: cartesian product of (primary ∪ alts) per slot
+    //   tashkeel mode + 1 slot: 12 diacritic options on the focused letter
+    //   tashkeel mode + N slots: 12 options applied to the *first* selected
+    //     letter, with the rest shown as context (Arabic tashkeel sits
+    //     between two consonants — attaching it to the first matches usage)
+    function buildPickerChips() {
+      if (pickerSlotIndices.length === 0) return [];
+      const slots = pickerSlotIndices.map(i => letterSlots[i]).filter(Boolean);
+      if (slots.length === 0) return [];
+
+      if (pickerMode === 'tashkeel') {
+        const first = slots[0];
+        const base = currentSlotBaseLetter(first);
+        const tail = slots.slice(1).map(s => currentSlotBaseLetter(s)).join('');
+        return TASHKEEL_OPTIONS.map(t => ({
+          display: base + t.marks + tail,
+          picks: { [first.pos]: base + t.marks },
+        }));
+      }
+
+      // letter mode: cartesian product across slots
+      const perSlotOptions = slots.map(s => {
+        const opts = [s.primary, ...s.alternatives];
+        return opts.length === 0 ? [s.primary] : opts;
+      });
+      let acc = [{ display: '', picks: {} }];
+      for (let i = 0; i < slots.length; i++) {
+        const next = [];
+        for (const carry of acc) {
+          for (const opt of perSlotOptions[i]) {
+            next.push({
+              display: carry.display + opt,
+              picks: { ...carry.picks, [slots[i].pos]: opt },
+            });
+          }
+        }
+        acc = next;
+      }
+
+      // Multi-slot: prepend any digraph that matches the combined Latin span.
+      // The first slot takes the digraph letter, every following slot takes an
+      // empty-string override so the Latin chars are "consumed" but only one
+      // Arabic letter is emitted. Dedup against the cartesian product.
+      if (slots.length >= 2) {
+        const combinedLatin = slots.map(s => s.pattern).join('');
+        const digraphAlts = DIGRAPHS[combinedLatin];
+        if (digraphAlts) {
+          const digraphChips = digraphAlts.map(arabic => {
+            const picks = { [slots[0].pos]: arabic };
+            for (let i = 1; i < slots.length; i++) picks[slots[i].pos] = '';
+            return { display: arabic, picks };
+          });
+          const existing = new Set(acc.map(c => c.display));
+          for (const chip of digraphChips.reverse()) {
+            if (!existing.has(chip.display)) acc.unshift(chip);
+          }
+        }
+      }
+      return acc;
+    }
+
+    async function openPicker(mode) {
       if (!currentInput) return;
-      // Single-word picker only for v1 — overrides apply to the active word.
+      pickerMode = mode === 'tashkeel' ? 'tashkeel' : 'letter';
+      // Single-word picker only — overrides apply to the active word.
       const slots = await invoke('letter_slots', { word: currentInput });
       if (!slots.length) return;
       letterSlots = slots;
-      pickerSlotIdx = slotIdxFromSelection(slots);
+      pickerSlotIndices = slotIdxsFromSelection(slots);
       pickerOpen = true;
-      const slot = slots[pickerSlotIdx];
-      const current = letterOverrides[slot.pos] || slot.primary;
-      const chips = [slot.primary, ...slot.alternatives];
-      pickerAltIdx = Math.max(0, chips.indexOf(current));
+      pickerChips = buildPickerChips();
+
+      // Default focus = chip matching the current state of every selected slot.
+      const focused = pickerChips.findIndex(chip => {
+        for (const [pos, val] of Object.entries(chip.picks)) {
+          const current = letterOverrides[Number(pos)] ||
+            letterSlots.find(s => s.pos === Number(pos))?.primary;
+          if (current !== val) return false;
+        }
+        return true;
+      });
+      pickerAltIdx = focused >= 0 ? focused : 0;
       renderPicker();
       markCmdgTipUsed();
     }
 
     function closePicker() {
       pickerOpen = false;
+      pickerMode = 'letter';
+      pickerSlotIndices = [];
+      pickerChips = [];
       pickerEl.classList.add('hidden');
     }
 
     async function commitPickerSelection() {
-      const slot = letterSlots[pickerSlotIdx];
-      if (!slot) { closePicker(); return; }
-      const chips = [slot.primary, ...slot.alternatives];
-      const choice = chips[pickerAltIdx];
-      // Snapshot the previous override map before applying — Cmd+Z pops this
-      // off the history to revert just the last picker action.
+      const chip = pickerChips[pickerAltIdx];
+      if (!chip) { closePicker(); return; }
+      // Snapshot for Cmd+Z, then apply every pick the chip carries — one
+      // combined chip writes to every slot in the picker's scope.
       pickerHistory.push({ ...letterOverrides });
-      // Always store — picking the primary forces the letter to appear even
-      // in middle position, where the auto-drop would normally remove it.
-      letterOverrides[slot.pos] = choice;
+      for (const [pos, val] of Object.entries(chip.picks)) {
+        letterOverrides[Number(pos)] = val;
+      }
       closePicker();
       await refreshSuggestions();
     }
@@ -2779,6 +3295,7 @@
         currentCandidates = lastWord.candidates;
         currentEmojis = lastWord.emojis || [];
       }
+      applyEditingPin();
       selectedIdx = 0;
       emojiMode = false;
       selectedEmojiIdx = 0;

@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     permissions:
@@ -22,8 +26,11 @@ jobs:
             args: ''
 
     runs-on: ${{ matrix.platform }}
+    # Apple notarization can occasionally queue for a while, but a broken run
+    # must never consume a runner for most of a day.
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -46,22 +53,50 @@ jobs:
         with:
           workspaces: './ -> target'
 
+      - name: Validate Apple signing credentials
+        if: matrix.platform == 'macos-latest'
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in CERTIFICATE CERTIFICATE_PASSWORD SIGNING_IDENTITY API_KEY_CONTENT API_KEY_ID API_ISSUER TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required macOS release secret $name is missing"
+              exit 1
+            fi
+          done
+
+      # Tauri expects the App Store Connect private key on disk. The secret
+      # contains the .p8 file contents; APPLE_API_KEY is the separate key ID.
+      - name: Write Apple notarization key
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$key_path"
+          chmod 600 "$key_path"
+          echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # macOS codesigning only — notarization is intentionally skipped
-          # because Tauri's bundler hits spurious URLSession -1009 errors
-          # during the notary polling loop on GitHub-hosted runners. Builds
-          # are still signed with the Developer ID cert (Gatekeeper shows
-          # an "unidentified developer" prompt on first launch; right-click
-          # → Open bypasses it). v0.1.1 will reintroduce notarization via
-          # an external xcrun notarytool step.
+          # Developer ID signing + notarization through App Store Connect.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           projectPath: ./app
           tagName: ${{ github.ref_name }}
@@ -70,3 +105,18 @@ jobs:
           prerelease: false
           updaterJsonPreferNsis: false
           args: ${{ matrix.args }}
+
+  # tauri-action uploads into a draft while the matrix is running. Publish only
+  # after every platform succeeds, so a notarization failure can never ship an
+  # unsigned or incomplete macOS release.
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish completed release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest

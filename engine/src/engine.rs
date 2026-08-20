@@ -181,25 +181,21 @@ impl TransliterationEngine {
             let has_separator = pos + 1 < len && chars[pos + 1] == '-';
             let remaining: String = chars[pos..].iter().collect();
 
-            // 1. Try the wider picker table first (covers consonants + vowels + 2)
-            let mut matched_pattern: Option<&'static str> = None;
-            for (pattern, primary, alternatives) in PICKER_ALTERNATIVES {
-                if has_separator && pattern.len() > 1 {
-                    continue;
-                }
-                if remaining.starts_with(pattern) {
-                    slots.push(LetterSlot {
-                        pos,
-                        pattern: (*pattern).to_string(),
-                        primary: (*primary).to_string(),
-                        alternatives: alternatives.iter().map(|s| (*s).to_string()).collect(),
-                    });
-                    matched_pattern = Some(*pattern);
-                    break;
-                }
-            }
-            if let Some(p) = matched_pattern {
-                pos += p.len();
+            // 1. Try the wider picker table first (covers consonants + vowels + 2).
+            // Always prefer the longest match: entries such as `t` and `th` both
+            // share a prefix, and table order must not change how the word is
+            // tokenized.
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, primary, alternatives)) =
+                Self::match_picker_max(&remaining, max_len)
+            {
+                slots.push(LetterSlot {
+                    pos,
+                    pattern: pattern.to_string(),
+                    primary: primary.to_string(),
+                    alternatives: alternatives.iter().map(|s| (*s).to_string()).collect(),
+                });
+                pos += pattern.len();
                 if has_separator && pos < len && chars[pos] == '-' {
                     pos += 1;
                 }
@@ -207,7 +203,6 @@ impl TransliterationEngine {
             }
 
             // 2. Fall back to consonant table — token has no alternatives.
-            let max_len = if has_separator { 1 } else { usize::MAX };
             if let Some((pattern, primary)) = Self::match_consonant_max(&remaining, max_len) {
                 slots.push(LetterSlot {
                     pos,
@@ -261,6 +256,11 @@ impl TransliterationEngine {
 
         // Validate overrides against the slot table — drop any whose value isn't
         // a legal alternative (or the primary) for the slot at that position.
+        // A combined picker chip may collapse several Latin slots into one
+        // Arabic mapping (e.g. s+h -> ش). In that encoding the first slot holds
+        // the Arabic result and every consumed following slot holds an empty
+        // string; validate that group as a span rather than rejecting the first
+        // value as an invalid replacement for `s` by itself.
         // Picking the primary is *not* a no-op: for vowels in middle position the
         // rule-based path would drop the letter, and the user's explicit pick
         // must force it to appear.
@@ -273,16 +273,26 @@ impl TransliterationEngine {
         let mut valid: HashMap<usize, String> = HashMap::new();
         for slot in &slots {
             if let Some(choice) = overrides_by_pos.get(&slot.pos) {
-                // An empty-string override means "this Latin slot has been
-                // consumed by a multi-letter Arabic form on a preceding slot"
-                // (e.g. picking خ for the `kh` 2-letter span sets pos 0 = "خ"
-                // and pos 1 = ""). rule_based_with_overrides emits "" and
-                // advances by the slot's pattern length, so the digraph result
-                // shows up exactly once.
                 if choice.is_empty() {
-                    valid.insert(slot.pos, choice.clone());
+                    // Empty values are admitted only as part of a validated
+                    // collapsed span, when processing its non-empty anchor.
                     continue;
                 }
+
+                if let Some(span_positions) = Self::validated_collapsed_span(
+                    &word_lower,
+                    slot,
+                    &slots,
+                    choice,
+                    overrides_by_pos,
+                ) {
+                    valid.insert(slot.pos, choice.clone());
+                    for consumed_pos in span_positions.into_iter().skip(1) {
+                        valid.insert(consumed_pos, String::new());
+                    }
+                    continue;
+                }
+
                 let base = strip_tashkeel(choice);
                 let base_matches_primary = base == slot.primary;
                 let base_matches_alt = slot.alternatives.iter().any(|a| *a == base);
@@ -304,6 +314,60 @@ impl TransliterationEngine {
         candidates
     }
 
+    /// Validate the UI's compact representation of a multi-Latin-letter
+    /// override. Returns the participating slot positions when `choice` is a
+    /// legal primary/alternative Arabic mapping for their combined pattern and
+    /// all slots after the anchor are explicitly marked as consumed (`""`).
+    fn validated_collapsed_span(
+        word: &str,
+        anchor: &LetterSlot,
+        slots: &[LetterSlot],
+        choice: &str,
+        overrides: &HashMap<usize, String>,
+    ) -> Option<Vec<usize>> {
+        let chars: Vec<char> = word.chars().collect();
+        let remaining: String = chars.get(anchor.pos..)?.iter().collect();
+        let base_choice = strip_tashkeel(choice);
+
+        for (pattern, primary) in CONSONANT_MAPPINGS {
+            if pattern.len() <= anchor.pattern.len() || !remaining.starts_with(pattern) {
+                continue;
+            }
+
+            let matches_primary = base_choice == *primary;
+            let matches_alternative = AMBIGUOUS_CONSONANTS
+                .iter()
+                .find(|(ambiguous_pattern, _, _)| ambiguous_pattern == pattern)
+                .map(|(_, _, alternatives)| alternatives.iter().any(|alt| *alt == base_choice))
+                .unwrap_or(false);
+            if !matches_primary && !matches_alternative {
+                continue;
+            }
+
+            let pattern_end = anchor.pos + pattern.chars().count();
+            let span_slots: Vec<&LetterSlot> = slots
+                .iter()
+                .filter(|slot| slot.pos >= anchor.pos && slot.pos < pattern_end)
+                .collect();
+            let combined_pattern: String = span_slots
+                .iter()
+                .map(|slot| slot.pattern.as_str())
+                .collect();
+            if span_slots.len() < 2 || combined_pattern != *pattern {
+                continue;
+            }
+            if span_slots
+                .iter()
+                .skip(1)
+                .all(|slot| overrides.get(&slot.pos).is_some_and(String::is_empty))
+            {
+                return Some(span_slots.iter().map(|slot| slot.pos).collect());
+            }
+        }
+
+        None
+    }
+
     /// Like `rule_based_transliterate(DropMiddle)` but emits an override letter
     /// directly when a Latin position has one. Picker overrides bypass the
     /// vowel-drop and taa-marbuta context rules — the user's choice always wins.
@@ -321,13 +385,9 @@ impl TransliterationEngine {
             // Override at this position wins. Advance by the matched pattern length.
             if let Some(arabic) = overrides.get(&pos) {
                 let remaining: String = chars[pos..].iter().collect();
-                let mut advance = 1;
-                for (pattern, _, _) in PICKER_ALTERNATIVES {
-                    if remaining.starts_with(pattern) {
-                        advance = pattern.len();
-                        break;
-                    }
-                }
+                let advance = Self::match_picker_max(&remaining, usize::MAX)
+                    .map(|(pattern, _, _)| pattern.len())
+                    .unwrap_or(1);
                 result.push_str(arabic);
                 pos += advance;
                 continue;
@@ -399,20 +459,13 @@ impl TransliterationEngine {
             }
             let has_separator = pos + 1 < len && chars[pos + 1] == '-';
             let remaining: String = chars[pos..].iter().collect();
-            let mut found = false;
-            for (pattern, _primary, alternatives) in AMBIGUOUS_CONSONANTS {
-                if has_separator && pattern.len() > 1 {
-                    continue;
-                }
-                if remaining.starts_with(pattern) {
-                    out.push((pos, *pattern, *alternatives));
-                    pos += pattern.len();
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                let max_len = if has_separator { 1 } else { usize::MAX };
+            let max_len = if has_separator { 1 } else { usize::MAX };
+            if let Some((pattern, _primary, alternatives)) =
+                Self::match_ambiguous_max(&remaining, max_len)
+            {
+                out.push((pos, pattern, alternatives));
+                pos += pattern.len();
+            } else {
                 if let Some((pattern, _)) = Self::match_consonant_max(&remaining, max_len) {
                     pos += pattern.len();
                 } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
@@ -503,6 +556,17 @@ impl TransliterationEngine {
         for swap in swaps {
             if !candidates.contains(&swap) {
                 candidates.push(swap);
+            }
+        }
+
+        // 5b. A final Latin `a`/`e` is genuinely ambiguous: it is often taa
+        // marbuta (ة), but can also be a written alef (ا). Generate both and
+        // let the frequency data decide (e.g. `hatha` -> هذا, while
+        // `gameela` still prefers جميلة).
+        let terminal_alef = Self::generate_terminal_alef_variants(&word, &candidates);
+        for variant in terminal_alef {
+            if !candidates.contains(&variant) {
+                candidates.push(variant);
             }
         }
 
@@ -674,6 +738,32 @@ impl TransliterationEngine {
             }
         }
         variants
+    }
+
+    /// Generate written-alef alternatives for candidates where a final Latin
+    /// `a` or `e` was interpreted as taa marbuta. Alef-layyina alternatives are
+    /// derived from these in the following generation step.
+    fn generate_terminal_alef_variants(input: &str, candidates: &[String]) -> Vec<String> {
+        if !matches!(input.chars().last(), Some('a' | 'e')) {
+            return Vec::new();
+        }
+
+        let taa_marbuta = 'ة';
+        let taa_len = taa_marbuta.len_utf8();
+        candidates
+            .iter()
+            .filter_map(|candidate| {
+                candidate.strip_suffix(taa_marbuta)
+                    .map(|base| {
+                        let mut variant = String::with_capacity(
+                            candidate.len() - taa_len + 'ا'.len_utf8(),
+                        );
+                        variant.push_str(base);
+                        variant.push('ا');
+                        variant
+                    })
+            })
+            .collect()
     }
 
     /// Generate variations by swapping ambiguous consonants.
@@ -992,6 +1082,28 @@ impl TransliterationEngine {
         None
     }
 
+    fn match_ambiguous_max(
+        input: &str,
+        max_len: usize,
+    ) -> Option<(&'static str, &'static str, &'static [&'static str])> {
+        AMBIGUOUS_CONSONANTS
+            .iter()
+            .filter(|(pattern, _, _)| pattern.len() <= max_len && input.starts_with(pattern))
+            .max_by_key(|(pattern, _, _)| pattern.len())
+            .map(|(pattern, primary, alternatives)| (*pattern, *primary, *alternatives))
+    }
+
+    fn match_picker_max(
+        input: &str,
+        max_len: usize,
+    ) -> Option<(&'static str, &'static str, &'static [&'static str])> {
+        PICKER_ALTERNATIVES
+            .iter()
+            .filter(|(pattern, _, _)| pattern.len() <= max_len && input.starts_with(pattern))
+            .max_by_key(|(pattern, _, _)| pattern.len())
+            .map(|(pattern, primary, alternatives)| (*pattern, *primary, *alternatives))
+    }
+
     fn match_long_vowel(input: &str) -> Option<(&'static str, &'static str)> {
         for (pattern, arabic) in LONG_VOWEL_MAPPINGS {
             if input.starts_with(pattern) {
@@ -1160,6 +1272,38 @@ mod tests {
         let results = e.transliterate_word("sh");
         assert!(results.iter().any(|r| r.contains("ش")),
             "Expected ش for 'sh', got {:?}", results);
+    }
+
+    #[test]
+    fn logical_spelling_resolves_ambiguous_digraph_and_final_alef() {
+        let e = engine();
+        let results = e.transliterate_word("hatha");
+        assert_eq!(results.first().map(String::as_str), Some("هذا"),
+            "Expected هذا on top for 'hatha', got {:?}", results);
+
+        let slots = e.letter_slots("hatha");
+        assert!(slots.iter().any(|slot| slot.pos == 2 && slot.pattern == "th"),
+            "Expected the picker to tokenize the longest `th` pattern, got {:?}", slots);
+    }
+
+    #[test]
+    fn common_logical_spellings_rank_expected_word_first() {
+        let e = engine();
+        let cases = [
+            ("hatha", "هذا"),
+            ("hadha", "هذا"),
+            ("haza", "هذا"),
+            ("thahab", "ذهب"),
+            ("lazeez", "لذيذ"),
+            ("gameela", "جميلة"),
+        ];
+
+        for (latin, expected) in cases {
+            let results = e.transliterate_word(latin);
+            assert_eq!(results.first().map(String::as_str), Some(expected),
+                "Expected `{}` to rank first for `{}`; got {:?}",
+                expected, latin, results);
+        }
     }
 
     #[test]
@@ -1363,6 +1507,27 @@ mod tests {
     }
 
     #[test]
+    fn every_declared_picker_choice_can_be_applied() {
+        let e = engine();
+        for (pattern, primary, alternatives) in PICKER_ALTERNATIVES {
+            let slots = e.letter_slots(pattern);
+            let slot = slots
+                .iter()
+                .find(|slot| slot.pos == 0 && slot.pattern == *pattern)
+                .unwrap_or_else(|| panic!("picker did not preserve longest slot for `{}`", pattern));
+
+            for choice in std::iter::once(primary).chain(alternatives.iter()) {
+                let mut overrides = HashMap::new();
+                overrides.insert(slot.pos, (*choice).to_string());
+                let results = e.transliterate_word_with_overrides(pattern, &overrides, None);
+                assert_eq!(results.first().map(String::as_str), Some(*choice),
+                    "picker choice `{}` could not be applied to `{}`; got {:?}",
+                    choice, pattern, results);
+            }
+        }
+    }
+
+    #[test]
     fn user_pref_resurfaces_picker_derived_candidate() {
         let e = engine();
         let mut prefs = UserPreferences::new();
@@ -1432,6 +1597,22 @@ mod tests {
         let results = e.transliterate_word_with_overrides("kheir", &overrides, None);
         assert_eq!(results[0], "خير",
             "expected خير from digraph span override, got {:?}", results);
+    }
+
+    #[test]
+    fn collapsed_span_choice_is_validated_as_a_group() {
+        let e = engine();
+        let slots = e.letter_slots("sh");
+        let s = slots.iter().find(|slot| slot.pattern == "s").unwrap();
+        let h = slots.iter().find(|slot| slot.pattern == "h").unwrap();
+        let mut overrides = HashMap::new();
+        // The fatha makes this observably different from falling back to the
+        // normal sh -> ش rule after silently rejecting the span override.
+        overrides.insert(s.pos, "شَ".to_string());
+        overrides.insert(h.pos, String::new());
+        let results = e.transliterate_word_with_overrides("sh", &overrides, None);
+        assert_eq!(results.first().map(String::as_str), Some("شَ"),
+            "collapsed span override was ignored; got {:?}", results);
     }
 
     #[test]

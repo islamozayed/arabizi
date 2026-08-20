@@ -17,7 +17,7 @@ Grab the latest installer for your platform from the [**Releases page**](https:/
 3. **First launch only:** macOS will warn that it can't verify the developer. **Right-click the app → Open → Open** in the second dialog. macOS remembers your choice and won't ask again.
 4. The app lives in your menu bar — press `⌘⇧A` to summon it
 
-> _Why the warning?_ Franconvert is signed with a Developer ID but not yet notarized by Apple. Notarization will be added in a future release; the right-click bypass is a one-time step.
+> Releases before v0.9.1 were signed with a Developer ID but not notarized by Apple. Starting with v0.9.1, the macOS release pipeline signs and notarizes the app before publishing it.
 
 ### Windows
 

@@ -1,6 +1,18 @@
 {
   "versions": [
     {
+      "version": "0.9.1",
+      "date": "2026-08-20",
+      "title": "More reliable suggestions, dependable letter swaps, and clearer overlays",
+      "items": [
+        "<strong>Logical spellings resolve more naturally.</strong> Common forms such as <em>hatha</em>, <em>hadha</em>, and <em>haza</em> now correctly rank هذا first, with stronger handling for ambiguous digraphs and final vowels.",
+        "<strong>Multi-letter swaps now stick.</strong> Selecting two or more Latin letters and replacing the span with one Arabic letter is validated as a single choice instead of silently ignoring part of the replacement.",
+        "<strong>Picker choices stay locked while typing.</strong> Combined-letter overrides and tashkeel survive subsequent edits as long as their Latin span still matches.",
+        "<strong>Floating tips are readable.</strong> Letter pickers, shortcut hints, and toast chips now use a stronger frosted surface so labels underneath no longer show through.",
+        "<strong>Better regression coverage.</strong> The engine now checks every declared picker alternative and a golden set of common logical spellings automatically."
+      ]
+    },
+    {
       "version": "0.9.0",
       "date": "2026-05-14",
       "title": "Smarter suggestions, full-word tashkeel, and a friendlier UI (release candidate before v1.0)",

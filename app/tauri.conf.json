@@ -1,6 +1,6 @@
 {
   "productName": "Franconvert",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "identifier": "com.franconvert.app",
   "build": {
     "frontendDist": "./ui"
@@ -14,9 +14,10 @@
     "windows": [
       {
         "label": "overlay",
+        "create": false,
         "title": "Franconvert",
-        "width": 480,
-        "height": 352,
+        "width": 600,
+        "height": 440,
         "resizable": false,
         "decorations": false,
         "alwaysOnTop": true,

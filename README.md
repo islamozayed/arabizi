@@ -4,6 +4,11 @@ A small, keyboard-first desktop utility that converts Franco-Arabic (a.k.a. Arab
 
 Lives in the menu bar / system tray. Press a global shortcut, type, hit Enter, and the Arabic lands in the field you were focused on.
 
+Only one instance runs at a time. Opening another copy brings the existing
+window forward without clearing your text. Quit any older builds once before
+switching to a build with this protection; older builds do not participate in
+the single-instance check.
+
 Built with Tauri 2 + Rust. Runs on macOS, Windows, and Linux.
 
 ## Install
@@ -92,9 +97,19 @@ Franconvert checks for updates on each launch. When a new release is published, 
 
 ## Build
 
+On macOS, Franconvert opts out of native Writing Tools before creating its
+webviews and disables predictive text/autocorrection in the Franco input.
+The launch shortcut defaults to `Cmd+Shift+A`; custom shortcuts retain the
+Command modifier. These settings apply to Franconvert, not to system-wide Siri.
+
+macOS 27 has a [WebKit regression](https://bugs.webkit.org/show_bug.cgi?id=327446)
+where the Siri affordance can ignore the Writing Tools opt-out. If it persists
+on a particular OS build, the app-level setting may require Apple's WebKit fix.
+
 ```bash
 cargo tauri dev      # development
 cargo tauri build    # release bundle
+node --test app/tests/*.test.cjs  # frontend regression tests
 ```
 
 The Tauri config lives in [`app/tauri.conf.json`](app/tauri.conf.json); the transliteration engine is a separate crate at [`engine/`](engine/).

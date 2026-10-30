@@ -323,6 +323,27 @@ fn macos_version() -> (u32, u32) {
     (major, minor)
 }
 
+/// Opt out before WKWebView is initialized: its configuration is copied at
+/// creation, so changing `webview.configuration` afterwards has no effect.
+#[cfg(target_os = "macos")]
+fn macos_webview_configuration() -> objc2::rc::Retained<objc2_web_kit::WKWebViewConfiguration> {
+    use objc2::{MainThreadMarker, msg_send, sel};
+    use objc2_app_kit::NSWritingToolsBehavior;
+    use objc2_web_kit::WKWebViewConfiguration;
+
+    let mtm = MainThreadMarker::new().expect("Webviews must be created on the main thread");
+    unsafe {
+        let config = WKWebViewConfiguration::new(mtm);
+        // The public setter exists on macOS 15+, but is absent from the
+        // generated bindings. Guard it to retain support for macOS 13/14.
+        let supported: bool = msg_send![&config, respondsToSelector: sel!(setWritingToolsBehavior:)];
+        if supported {
+            let _: () = msg_send![&config, setWritingToolsBehavior: NSWritingToolsBehavior::None];
+        }
+        config
+    }
+}
+
 /// Applies the appropriate macOS window backdrop:
 /// - macOS 26+ (Tahoe): FullScreenUI material — theme-adaptive translucency that
 ///   the OS renders with the Liquid Glass aesthetic on Tahoe+.
@@ -914,6 +935,12 @@ fn apply_rounded_corners(window: &tauri::WebviewWindow) {
 
 fn main() {
     tauri::Builder::default()
+        // Check for an existing copy before registering shortcuts or creating
+        // windows. The plugin uses the bundle identifier, not the app's path.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let app_handle = app.clone();
+            let _ = app.run_on_main_thread(move || show_existing_instance(&app_handle));
+        }))
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -927,6 +954,16 @@ fn main() {
             // Hide dock icon — run as a tray-only agent like Raycast
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Build explicitly so the native text-input configuration is in
+            // place before WebKit creates the overlay (see create: false).
+            let overlay_config = app.config().app.windows.iter()
+                .find(|config| config.label == "overlay")
+                .ok_or("Missing overlay window configuration")?;
+            let overlay = tauri::WebviewWindowBuilder::from_config(app, overlay_config)?;
+            #[cfg(target_os = "macos")]
+            let overlay = overlay.with_webview_configuration(macos_webview_configuration());
+            overlay.build()?;
 
             // Load user preferences
             let app_data = app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -996,8 +1033,11 @@ fn main() {
                 .center()
                 .skip_taskbar(true)
                 .shadow(true)
-                .transparent(true)
-                .build()?;
+                .transparent(true);
+
+                #[cfg(target_os = "macos")]
+                let ob = ob.with_webview_configuration(macos_webview_configuration());
+                let ob = ob.build()?;
 
                 #[cfg(target_os = "windows")]
                 {
@@ -1088,8 +1128,33 @@ fn main() {
             mark_onboarding_shown,
             reset_app_data,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // Finder may reopen the existing process instead of launching a
+            // second one, so handle that path as well.
+            #[cfg(target_os = "macos")]
+            if matches!(_event, tauri::RunEvent::Reopen { .. }) {
+                show_existing_instance(_app);
+            }
+        });
+}
+
+/// Reopening always reveals the existing window. Unlike the launch shortcut,
+/// it must not toggle a visible window off or clear text the user is composing.
+fn show_existing_instance(app: &tauri::AppHandle) {
+    if let Some(onboarding) = app.get_webview_window("onboarding") {
+        if onboarding.is_visible().unwrap_or(false) {
+            let _ = onboarding.set_focus();
+            return;
+        }
+    }
+    if let Some(window) = app.get_webview_window("overlay") {
+        capture_prev_focus();
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 fn toggle_overlay(app: &tauri::AppHandle) {

@@ -32,6 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Verify release versions and prepare notes
+        id: release-notes
+        run: node scripts/release-notes.cjs
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -52,6 +56,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './ -> target'
+
+      - name: Run regression tests
+        shell: bash
+        run: |
+          cargo test --locked --workspace
+          node --test app/tests/*.test.cjs
 
       - name: Validate Apple signing credentials
         if: matrix.platform == 'macos-latest'
@@ -101,6 +111,7 @@ jobs:
           projectPath: ./app
           tagName: ${{ github.ref_name }}
           releaseName: 'Franconvert ${{ github.ref_name }}'
+          releaseBody: ${{ steps.release-notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           updaterJsonPreferNsis: false

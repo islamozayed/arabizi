@@ -43,10 +43,12 @@
     /* === Theme Variables === */
     :root {
       --font: 'Manrope', system-ui, sans-serif;
+      --font-size-min: 11pt;
       --font-ar: 'Rubik', 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif;
       --accent: #58A1AC;
       --accent-translucent: rgba(88, 161, 172, 0.4);
       --radius: 8px;
+      --separator: color-mix(in srgb, var(--outline) 25%, transparent);
     }
 
     [data-theme="dark"] {
@@ -58,7 +60,7 @@
       --hint-example-bg: rgba(88, 161, 172, 0.4);
       --hint-example-outline: rgba(255, 255, 255, 0.2);
       --kbd-bg: rgba(255, 255, 255, 0.1);
-      --kbd-border: #717171;
+
       --icon-fill: #E3E3E3;
       --icon-fill-muted: #9C9C9C;
       --item-hover: rgba(255, 255, 255, 0.06);
@@ -80,7 +82,7 @@
       --hint-example-bg: rgba(88, 161, 172, 0.18);
       --hint-example-outline: rgba(0, 0, 0, 0.1);
       --kbd-bg: rgba(0, 0, 0, 0.06);
-      --kbd-border: #c8c8c8;
+
       --icon-fill: #333333;
       --icon-fill-muted: #666666;
       --item-hover: rgba(0, 0, 0, 0.04);
@@ -95,6 +97,7 @@
 
     body {
       font-family: var(--font);
+      font-size: var(--font-size-min);
       background: transparent;
       overflow: hidden;
       user-select: none;
@@ -206,7 +209,7 @@
     .back-btn:hover { background: var(--item-hover); }
 
     .settings-header-title {
-      font: 600 14px var(--font);
+      font: 600 var(--font-size-min) var(--font);
       color: var(--text-primary);
     }
 
@@ -226,7 +229,7 @@
 
     .panel-label {
       color: var(--text-secondary);
-      font: 12px/16px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       flex-shrink: 0;
     }
 
@@ -234,7 +237,7 @@
     .tips-panel {
       flex: 1;
       gap: 4px;
-      overflow: hidden;
+      overflow-y: auto;
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
@@ -250,7 +253,7 @@
     #content * { scrollbar-width: none; }
 
     .mapping-section-label {
-      font-size: 10px;
+      font-size: var(--font-size-min);
       font-weight: 600;
       color: var(--text-tertiary);
       text-transform: uppercase;
@@ -275,13 +278,13 @@
     }
 
     .mapping-key {
-      font: 600 13px var(--font);
+      font: 600 var(--font-size-min) var(--font);
       color: var(--accent);
       min-width: 22px;
     }
 
     .mapping-arrow {
-      font-size: 10px;
+      font-size: var(--font-size-min);
       color: var(--text-tertiary);
       margin: 0 6px;
     }
@@ -294,7 +297,7 @@
     /* Starter words (landing) */
     .starter-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 4px 6px;
       margin-top: 4px;
     }
@@ -304,7 +307,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      padding: 6px 10px;
+      padding: 4px 10px;
       border-radius: 5px;
       background: transparent;
       cursor: pointer;
@@ -322,20 +325,23 @@
 
     .starter-chip .starter-ar {
       font: 16px var(--font-ar);
+      line-height: 22px;
+      white-space: nowrap;
       color: var(--text-primary);
       margin-left: auto;
     }
 
     /* Per-chip keyboard hint: revealed only on hover or when the chip is the
-       selected one. Keeps the landing view uncluttered and pairs the affordance
-       with the element it acts on. */
+       selected one. Reserve its space so revealing it never moves the words
+       or changes row heights. */
     .starter-chip .starter-chip-kbd {
       display: inline-flex;
+      flex-shrink: 0;
       align-items: center;
       gap: 4px;
       opacity: 0;
       pointer-events: none;
-      font: 9px/1 var(--font);
+      font: var(--font-size-min)/1 var(--font);
       color: rgba(255, 255, 255, 0.92);
       letter-spacing: 0.2px;
       transition: opacity 0.08s;
@@ -346,10 +352,10 @@
     }
     .starter-chip .starter-chip-kbd kbd {
       display: inline-block;
-      padding: 1px 4px;
+      padding: 3px 6px;
       border-radius: 3px;
       background: rgba(255, 255, 255, 0.18);
-      font: 9px var(--font);
+      font: var(--font-size-min) var(--font);
       color: #fff;
     }
     .starter-chip .starter-chip-kbd .sep {
@@ -498,14 +504,14 @@
     }
     .letter-picker .lp-chip.disabled:hover { background: transparent; }
     .letter-picker .lp-latin {
-      font: 11px/1 var(--font);
+      font: var(--font-size-min)/1 var(--font);
       color: var(--text-tertiary);
       direction: ltr;
       padding: 0 6px 0 4px;
       letter-spacing: 0.04em;
     }
     .letter-picker .lp-empty {
-      font: 11px/1 var(--font);
+      font: var(--font-size-min)/1 var(--font);
       color: var(--text-tertiary);
       padding: 0 6px;
     }
@@ -514,7 +520,7 @@
       font-weight: 600;
     }
     .letter-picker .lp-mode {
-      font: 9px/1 var(--font);
+      font: var(--font-size-min)/1 var(--font);
       color: var(--accent);
       text-transform: uppercase;
       letter-spacing: 0.06em;
@@ -541,11 +547,11 @@
     }
     .shortcuts-row:hover { background: var(--item-hover); }
     .shortcuts-label {
-      font: 13px/18px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       color: var(--text-primary);
     }
     .shortcuts-keys {
-      font: 12px/1 var(--font);
+      font: var(--font-size-min)/1 var(--font);
       color: var(--text-secondary);
       display: inline-flex;
       align-items: center;
@@ -554,16 +560,16 @@
     }
     .shortcuts-keys kbd {
       background: var(--kbd-bg);
-      border: 1px solid var(--kbd-border);
+      border: none;
       border-radius: 4px;
-      padding: 2px 6px;
-      font: 11px/1 var(--font);
+      padding: 4px 8px;
+      font: var(--font-size-min)/1 var(--font);
       color: var(--text-primary);
       display: inline-flex;
       align-items: center;
-      min-height: 18px;
+      min-height: 24px;
     }
-    .shortcuts-keys kbd .material-symbols { font-size: 14px; }
+    .shortcuts-keys kbd .material-symbols { font-size: var(--font-size-min); }
 
     /* ── Shortcuts tip (anchored to bottom-center of the main panel) ── */
     .shortcuts-tip {
@@ -574,7 +580,7 @@
       color: var(--text-primary);
       padding: 10px 14px;
       border-radius: 8px;
-      font: 13px/1.4 var(--font);
+      font: var(--font-size-min)/1.4 var(--font);
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
       display: grid;
       grid-template-columns: 1fr auto;
@@ -602,7 +608,7 @@
       white-space: nowrap;
       /* Lock the row to the kbd box height so the action column can mirror
          it exactly — each icon button aligns to the centerline of its row. */
-      min-height: 20px;
+      min-height: 24px;
     }
     .shortcuts-tip .st-keys {
       display: inline-flex;
@@ -615,16 +621,16 @@
     }
     .shortcuts-tip kbd {
       background: var(--kbd-bg);
-      border: 1px solid var(--kbd-border);
+      border: none;
       border-radius: 4px;
-      padding: 2px 6px;
-      font: 11px/1 var(--font);
+      padding: 4px 8px;
+      font: var(--font-size-min)/1 var(--font);
       color: var(--text-primary);
       display: inline-flex;
       align-items: center;
       gap: 2px;
     }
-    .shortcuts-tip kbd .material-symbols { font-size: 14px; }
+    .shortcuts-tip kbd .material-symbols { font-size: var(--font-size-min); }
     .shortcuts-tip .st-actions {
       display: flex;
       flex-direction: column;
@@ -646,7 +652,7 @@
       align-items: center;
       justify-content: center;
       /* Same vertical box as .st-row so the icons share the row baseline. */
-      height: 20px;
+      height: 24px;
     }
     .shortcuts-tip .st-btn:hover { opacity: 1; background: var(--item-hover); }
     .shortcuts-tip .st-btn .material-symbols { font-size: 16px; }
@@ -660,7 +666,7 @@
       color: var(--text-primary);
       padding: 6px 10px;
       border-radius: 8px;
-      font: 12px/1.3 var(--font-ar);
+      font: var(--font-size-min)/1.3 var(--font-ar);
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
       display: flex;
       align-items: center;
@@ -677,11 +683,11 @@
       pointer-events: auto;
     }
     .cmdg-tip kbd {
-      font: 11px/1 var(--font-ar);
+      font: var(--font-size-min)/1 var(--font-ar);
       background: rgba(255,255,255,0.12);
-      border: 1px solid rgba(255,255,255,0.18);
+      border: none;
       border-radius: 4px;
-      padding: 2px 4px;
+      padding: 4px 6px;
     }
     .cmdg-tip .cmdg-tip-dismiss {
       background: none;
@@ -689,7 +695,7 @@
       color: inherit;
       opacity: 0.55;
       cursor: pointer;
-      font-size: 11px;
+      font-size: var(--font-size-min);
       padding: 0;
       margin-left: 2px;
     }
@@ -721,16 +727,16 @@
       box-shadow: 0 16px 48px rgba(0,0,0,0.5);
     }
     .changelog-modal h2 {
-      font: 600 14px/1.2 var(--font-ar);
+      font: 600 var(--font-size-min)/1.2 var(--font-ar);
       color: var(--text-primary);
       margin: 0;
     }
     .changelog-modal .changelog-version {
-      font: 11px/1 var(--font-ar);
+      font: var(--font-size-min)/1 var(--font-ar);
       color: var(--text-secondary, rgba(255,255,255,0.55));
     }
     .changelog-modal .changelog-body {
-      font: 12px/1.5 var(--font-ar);
+      font: var(--font-size-min)/1.5 var(--font-ar);
       color: var(--text-primary);
       overflow-y: auto;
       white-space: pre-wrap;
@@ -750,7 +756,7 @@
       border: none;
       border-radius: 6px;
       padding: 6px 14px;
-      font: 12px/1 var(--font-ar);
+      font: var(--font-size-min)/1 var(--font-ar);
       cursor: pointer;
     }
 
@@ -796,7 +802,7 @@
     }
 
     .preview-committed-hint {
-      font: 12px/16px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       color: var(--text-tertiary);
       text-align: center;
       margin-top: auto;
@@ -812,13 +818,13 @@
     }
 
     .settings-nav {
-      width: 142px;
+      width: 156px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
       padding: 12px;
       gap: 4px;
-      border-right: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
+      border-right: 1px solid var(--separator);
     }
 
     .settings-nav-btn {
@@ -839,7 +845,7 @@
     }
 
     .settings-nav-btn svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
-    .settings-nav-btn span { font: 500 13px/18px var(--font); }
+    .settings-nav-btn span { font: 500 var(--font-size-min)/1.3 var(--font); }
     .settings-nav-btn:hover { color: var(--text-primary); background: var(--item-hover); }
     .settings-nav-btn.active {
       background: var(--accent);
@@ -849,6 +855,7 @@
 
     .settings-content {
       flex: 1;
+      min-width: 0;
       overflow-y: auto;
       padding: 12px;
       display: flex;
@@ -862,11 +869,11 @@
 
     .settings-subsec + .settings-subsec {
       padding-top: 10px;
-      border-top: 1px solid color-mix(in srgb, var(--outline) 40%, transparent);
+      border-top: 1px solid var(--separator);
     }
 
     .settings-section-label {
-      font: 600 10px var(--font);
+      font: 600 var(--font-size-min) var(--font);
       color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -881,6 +888,7 @@
 
     .theme-option {
       flex: 1;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -893,7 +901,7 @@
 
     .theme-preview {
       width: 100%;
-      height: 58px;
+      aspect-ratio: 16 / 9;
       border-radius: 6px;
       overflow: hidden;
       display: flex;
@@ -901,14 +909,14 @@
       outline: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
     }
 
-    .tp-header { height: 12px; flex-shrink: 0; border-bottom: 1px solid color-mix(in srgb, var(--outline) 30%, transparent); }
+    .tp-header { height: 12px; flex-shrink: 0; border-bottom: 1px solid var(--separator); }
     .tp-body { flex: 1; display: flex; }
-    .tp-sidebar { width: 14px; flex-shrink: 0; border-right: 1px solid color-mix(in srgb, var(--outline) 30%, transparent); }
+    .tp-sidebar { width: 14px; flex-shrink: 0; border-right: 1px solid var(--separator); }
     .tp-content { flex: 1; }
     .tp-footer {
       height: 14px;
       flex-shrink: 0;
-      border-top: 1px solid color-mix(in srgb, var(--outline) 30%, transparent);
+      border-top: 1px solid var(--separator);
       display: flex;
       align-items: center;
       padding: 0 4px;
@@ -918,7 +926,7 @@
       width: 8px;
       height: 8px;
       border-radius: 1px;
-      border: 1px solid color-mix(in srgb, var(--outline) 50%, transparent);
+      border: none;
       background: color-mix(in srgb, var(--outline) 15%, transparent);
       flex-shrink: 0;
     }
@@ -950,7 +958,7 @@
       align-items: center;
       gap: 4px;
       color: var(--text-secondary);
-      font: 11px/14px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
     }
 
     .theme-radio {
@@ -972,7 +980,7 @@
     }
 
     .toggle-label {
-      font: 13px var(--font);
+      font: var(--font-size-min) var(--font);
       color: var(--text-secondary);
     }
 
@@ -1022,7 +1030,7 @@
       border: 1px solid var(--text-primary);
       background: transparent;
       color: var(--text-secondary);
-      font: 500 11px var(--font);
+      font: 500 var(--font-size-min) var(--font);
       cursor: pointer;
       transition: all 0.1s;
       flex-shrink: 0;
@@ -1078,19 +1086,21 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     .shortcut-current {
       display: flex;
       gap: 3px;
       align-items: center;
-      flex: 1;
+      flex: 1 1 140px;
+      min-width: 0;
       flex-wrap: wrap;
     }
 
     .shortcut-sep {
       color: var(--text-tertiary);
-      font-size: 11px;
+      font-size: var(--font-size-min);
       padding: 0 1px;
     }
 
@@ -1100,7 +1110,7 @@
       border-radius: 4px;
       background: transparent;
       color: var(--text-secondary);
-      font: 500 11px var(--font);
+      font: 500 var(--font-size-min) var(--font);
       cursor: pointer;
       flex-shrink: 0;
       transition: all 0.1s;
@@ -1116,7 +1126,7 @@
 
     .shortcut-hint {
       color: var(--text-tertiary);
-      font-size: 11px;
+      font-size: var(--font-size-min);
     }
 
     /* === Footer === */
@@ -1139,13 +1149,13 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 20px;
-      height: 20px;
-      padding: 0 4px;
+      min-width: 24px;
+      min-height: 24px;
+      padding: 2px 6px;
       background: var(--kbd-bg);
-      border: 1px solid var(--kbd-border);
+      border: none;
       border-radius: 4px;
-      font: 10px/12px sans-serif;
+      font: var(--font-size-min)/1.3 sans-serif;
       color: var(--icon-fill);
     }
 
@@ -1153,7 +1163,7 @@
 
     .shortcut-label {
       color: var(--text-tertiary);
-      font: 11px/14px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       white-space: nowrap;
     }
 
@@ -1194,10 +1204,10 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 2px; }
 
-    /* Surface fill — module outlines at 60% opacity */
+    /* Subtle separators between the main surfaces. */
     .header, .panel, .footer {
       background: var(--bg-surface);
-      outline: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
+      outline: 1px solid var(--separator);
     }
 
     /* Toast notification */
@@ -1210,7 +1220,7 @@
       outline: 1px solid var(--outline);
       backdrop-filter: blur(50px);
       color: var(--text-secondary);
-      font: 11px/14px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       padding: 6px 12px;
       border-radius: 4px;
       opacity: 0;
@@ -1276,7 +1286,7 @@
     }
     .update-banner-text {
       flex: 1;
-      font: 12px/16px var(--font);
+      font: var(--font-size-min)/1.3 var(--font);
       color: var(--text-primary);
       min-width: 0;
     }
@@ -1285,11 +1295,11 @@
     }
     .update-banner-text .ub-sub {
       color: var(--text-secondary);
-      font-size: 11px;
+      font-size: var(--font-size-min);
       margin-top: 1px;
     }
     .update-banner-btn {
-      font: 600 11px/14px var(--font);
+      font: 600 var(--font-size-min)/1.3 var(--font);
       padding: 5px 10px;
       border-radius: 4px;
       border: 1px solid var(--outline);
@@ -1433,7 +1443,7 @@
       border: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
       border-radius: 4px;
       color: var(--text-primary);
-      font: 12px/14px 'Courier New', monospace;
+      font: var(--font-size-min)/1.3 'Courier New', monospace;
       padding: 0 8px;
       outline: none;
       transition: border-color 0.1s;
@@ -1444,7 +1454,7 @@
     .cp-recent { display: flex; flex-direction: column; gap: 5px; }
 
     .cp-recent-label {
-      font: 600 10px var(--font);
+      font: 600 var(--font-size-min) var(--font);
       color: var(--text-tertiary);
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -1486,8 +1496,8 @@
     [data-size="large"] .hint-text { font-size: 18px; }
     [data-size="large"] .preview-text { font-size: 38px; line-height: 48px; }
     [data-size="large"] .suggestion .ar { font-size: 18px; line-height: 24px; }
-    [data-size="large"] .toggle-label { font-size: 14px; }
-    [data-size="large"] .settings-section-label { font-size: 12px; }
+    [data-size="large"] .toggle-label { font-size: 16px; }
+    [data-size="large"] .settings-section-label { font-size: 16px; }
 
     [data-contrast="high"][data-theme="dark"] {
       --text-primary: #ffffff;
@@ -1584,7 +1594,7 @@
           </svg>
         </div>
         <div class="input-wrapper">
-          <input type="text" id="arabizi-input" autocomplete="off" spellcheck="false">
+          <input type="text" id="arabizi-input" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" writingsuggestions="false">
           <div class="input-hint" id="input-hint">
             <span class="hint-text">Try typing in franco, something like</span>
             <span class="hint-example" id="hint-example">ahlan wa sahlan</span>
@@ -2122,7 +2132,8 @@
     }
 
     // ── Keyboard shortcut ──
-    const DEFAULT_SHORTCUT = 'Ctrl+Shift+A';
+    const IS_MAC = navigator.platform.toLowerCase().includes('mac');
+    const DEFAULT_SHORTCUT = IS_MAC ? 'Cmd+Shift+A' : 'Ctrl+Shift+A';
     let isRecordingShortcut = false;
     let shortcutRecordHandler = null;
     let shortcutKeyupHandler = null;
@@ -2143,7 +2154,7 @@
       ).join('');
     }
 
-    const MOD_KEY_MAP = { Control: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Meta: 'Meta' };
+    const MOD_KEY_MAP = { Control: 'Ctrl', Shift: 'Shift', Alt: 'Alt', Meta: IS_MAC ? 'Cmd' : 'Meta' };
 
     function renderLiveKeys(mods, finalKey) {
       const parts = finalKey ? [...mods, finalKey] : mods.length ? [...mods, '?'] : null;
@@ -2183,10 +2194,11 @@
         if (e.ctrlKey) mods.push('Ctrl');
         if (e.shiftKey) mods.push('Shift');
         if (e.altKey) mods.push('Alt');
+        if (e.metaKey) mods.push(IS_MAC ? 'Cmd' : 'Meta');
 
         if (mods.length === 0) {
           liveModifiers.clear();
-          shortcutCurrentEl.innerHTML = '<span class="shortcut-hint">Need Ctrl, Shift, or Alt</span>';
+          shortcutCurrentEl.innerHTML = `<span class="shortcut-hint">Need ${IS_MAC ? 'Cmd, Ctrl, Shift, or Alt' : 'Ctrl, Shift, Alt, or Meta'}</span>`;
           return;
         }
 
@@ -2239,9 +2251,9 @@
     }
 
     // ── Compact mode ──
-    const WINDOW_W = 480;
-    const WINDOW_H_DEFAULT = 352;
-    const WINDOW_H_COMPACT = 308;
+    const WINDOW_W = 600;
+    const WINDOW_H_DEFAULT = 440;
+    const WINDOW_H_COMPACT = WINDOW_H_DEFAULT - 48; // Hide the padded shortcut footer.
 
     function applyCompact(compact) {
       footerEl.classList.toggle('hidden', compact);

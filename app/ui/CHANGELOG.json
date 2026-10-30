@@ -1,6 +1,18 @@
 {
   "versions": [
     {
+      "version": "0.9.2",
+      "date": "2026-10-31",
+      "title": "A roomier widget, clearer text, and one app instance",
+      "items": [
+        "<strong>More room to type.</strong> The default widget is now 600 × 440, keeping the same proportions with a minimum text size of 11pt throughout the app.",
+        "<strong>A lighter interface.</strong> Separators are more subtle, shortcut keys are borderless with extra padding, and theme previews keep a 16:9 ratio.",
+        "<strong>Stable starter-word hints.</strong> Paste and Tab hints appear beside the words without moving entries when you hover.",
+        "<strong>Reliable Mac shortcuts.</strong> Settings shows the correct Command-based default and retains the Command key when recording a custom shortcut.",
+        "<strong>One instance at a time.</strong> Opening another copy brings the running widget forward without clearing your text. Quit older builds once when switching to this version."
+      ]
+    },
+    {
       "version": "0.9.1",
       "date": "2026-08-20",
       "title": "More reliable suggestions, dependable letter swaps, and clearer overlays",

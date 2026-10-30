@@ -3,7 +3,7 @@ const { readFileSync, appendFileSync } = require('node:fs');
 const { resolve } = require('node:path');
 
 const root = resolve(__dirname, '..');
-const read = path => readFileSync(resolve(root, path), 'utf8');
+const read = path => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
 const version = JSON.parse(read('app/tauri.conf.json')).version;
 const cargoVersion = read('app/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
 const lockedVersion = read('Cargo.lock').match(/name = "franconvert"\nversion = "([^"]+)"/)?.[1];

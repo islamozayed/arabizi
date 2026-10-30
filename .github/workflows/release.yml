@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           cargo test --locked --workspace
-          node --test app/tests/*.test.cjs
+          node --test app/tests/*.test.cjs scripts/*.test.cjs
 
       - name: Validate Apple signing credentials
         if: matrix.platform == 'macos-latest'

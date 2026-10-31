@@ -53,6 +53,10 @@
       --font-ar: 'Rubik', 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif;
       --accent: #58A1AC;
       --accent-translucent: rgba(88, 161, 172, 0.4);
+      /* Fill + text colour for anything with text on the accent. Computed in
+         applyAccentColor so text keeps 4.5:1 contrast for any accent. */
+      --accent-fill: #457E86;
+      --on-accent: #fff;
       --radius: 8px;
       --separator: color-mix(in srgb, var(--outline) 25%, transparent);
     }
@@ -257,6 +261,21 @@
     #content ::-webkit-scrollbar-track,
     #content ::-webkit-scrollbar-thumb { width: 0; height: 0; background: transparent; }
     #content * { scrollbar-width: none; }
+    ::selection { background: var(--accent-translucent); }
+
+    /* Scrollbars are hidden, so fade the edge that has more content past it. */
+    [data-fade="top"] {
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px);
+      mask-image: linear-gradient(to bottom, transparent, #000 24px);
+    }
+    [data-fade="bottom"] {
+      -webkit-mask-image: linear-gradient(to top, transparent, #000 24px);
+      mask-image: linear-gradient(to top, transparent, #000 24px);
+    }
+    [data-fade="both"] {
+      -webkit-mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+      mask-image: linear-gradient(to bottom, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+    }
 
     .mapping-section-label {
       font-size: var(--font-size-min);
@@ -327,9 +346,11 @@
 
     .starter-chip:hover,
     .starter-chip.selected {
-      background: var(--accent);
+      background: var(--accent-fill);
       outline-color: var(--hint-example-outline);
     }
+    .starter-chip:hover .starter-ar,
+    .starter-chip.selected .starter-ar { color: var(--on-accent); }
 
     .starter-chip .starter-ar {
       font: var(--fs-ar-list) var(--font-ar);
@@ -350,7 +371,7 @@
       opacity: 0;
       pointer-events: none;
       font: var(--font-size-min)/1 var(--font);
-      color: rgba(255, 255, 255, 0.92);
+      color: var(--on-accent);
       letter-spacing: 0.2px;
       transition: opacity 0.08s;
     }
@@ -362,9 +383,9 @@
       display: inline-block;
       padding: 3px 6px;
       border-radius: 3px;
-      background: rgba(255, 255, 255, 0.18);
-      font: var(--font-size-min) var(--font);
-      color: #fff;
+      background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+      font: 500 var(--fs-caption)/1 var(--font);
+      color: var(--on-accent);
     }
     .starter-chip .starter-chip-kbd .sep {
       opacity: 0.55;
@@ -410,11 +431,11 @@
     .suggestion:hover { background: var(--item-hover); }
 
     .suggestion.selected {
-      background: var(--accent);
+      background: var(--accent-fill);
       outline: 1px solid var(--hint-example-outline);
     }
 
-    .suggestion.selected .ar { color: #fff; }
+    .suggestion.selected .ar { color: var(--on-accent); }
 
     .suggestion .ar {
       font: var(--fs-ar-list)/24px var(--font-ar);
@@ -469,7 +490,7 @@
       color: var(--text-tertiary);
       pointer-events: none;
     }
-    .suggestion.selected .lock-badge { color: #fff; }
+    .suggestion.selected .lock-badge { color: var(--on-accent); }
 
     .letter-picker {
       position: absolute;
@@ -506,8 +527,8 @@
     }
     .letter-picker .lp-chip:hover { background: var(--item-hover); }
     .letter-picker .lp-chip.selected {
-      background: var(--accent);
-      color: #fff;
+      background: var(--accent-fill);
+      color: var(--on-accent);
       outline: 1px solid var(--hint-example-outline);
     }
     .letter-picker .lp-chip.disabled {
@@ -554,7 +575,8 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 6px 4px;
+      padding: 6px 8px;
+      margin: 0 -8px;
       border-radius: 6px;
     }
     .shortcuts-row:hover { background: var(--item-hover); }
@@ -608,25 +630,22 @@
       transform: translate(-50%, 0);
       pointer-events: auto;
     }
+    /* Two columns (keys | label) so labels start at the same x whatever the
+       key widths. Rows stay 24px to line up with the action buttons. */
     .shortcuts-tip .st-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .shortcuts-tip .st-row {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-auto-rows: 24px;
+      column-gap: 10px;
+      row-gap: 8px;
       align-items: center;
-      gap: 10px;
       white-space: nowrap;
-      /* Lock the row to the kbd box height so the action column can mirror
-         it exactly — each icon button aligns to the centerline of its row. */
-      min-height: 24px;
     }
+    .shortcuts-tip .st-row { display: contents; }
     .shortcuts-tip .st-keys {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      flex-shrink: 0;
     }
     .shortcuts-tip .st-label {
       color: var(--text-secondary);
@@ -635,8 +654,9 @@
       background: var(--kbd-bg);
       border: none;
       border-radius: 4px;
-      padding: 4px 8px;
-      font: var(--font-size-min)/1 var(--font);
+      height: 24px;
+      padding: 0 8px;
+      font: 500 var(--fs-caption)/1 var(--font);
       color: var(--text-primary);
       display: inline-flex;
       align-items: center;
@@ -763,8 +783,8 @@
       margin-top: 6px;
     }
     .changelog-modal button {
-      background: var(--accent);
-      color: #fff;
+      background: var(--accent-fill);
+      color: var(--on-accent);
       border: none;
       border-radius: 6px;
       padding: 6px 14px;
@@ -857,12 +877,12 @@
     }
 
     .settings-nav-btn svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
-    .settings-nav-btn span { font: 500 var(--font-size-min)/1.3 var(--font); }
+    .settings-nav-btn span { font: 500 var(--fs-caption)/1.3 var(--font); }
     .settings-nav-btn:hover { color: var(--text-primary); background: var(--item-hover); }
     .settings-nav-btn.active {
-      background: var(--accent);
-      color: #fff;
-      outline: 1px solid color-mix(in srgb, #fff 20%, transparent);
+      background: var(--accent-fill);
+      color: var(--on-accent);
+      outline: 1px solid color-mix(in srgb, var(--on-accent) 20%, transparent);
     }
 
     .settings-content {
@@ -1274,11 +1294,11 @@
     /* Update banner */
     .update-banner {
       position: fixed;
-      top: 8px;
+      bottom: 8px;
       left: 8px;
       right: 8px;
-      background: var(--bg-surface);
-      outline: 1px solid var(--outline);
+      background: var(--overlay-glass-bg);
+      outline: 1px solid var(--overlay-glass-border);
       backdrop-filter: blur(50px);
       border-radius: var(--radius);
       padding: 10px 12px;
@@ -1286,7 +1306,7 @@
       align-items: center;
       gap: 10px;
       z-index: 150;
-      transform: translateY(-120%);
+      transform: translateY(120%);
       opacity: 0;
       transition: transform 0.25s ease, opacity 0.2s;
       pointer-events: none;
@@ -1324,9 +1344,9 @@
       background: var(--item-hover);
     }
     .update-banner-btn.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
+      background: var(--accent-fill);
+      border-color: var(--accent-fill);
+      color: var(--on-accent);
     }
     .update-banner-btn.primary:hover {
       filter: brightness(1.1);
@@ -1507,6 +1527,7 @@
     [data-size="large"] #arabizi-input { font-size: 19px; }
     [data-size="large"] .hint-text { font-size: 18px; }
     [data-size="large"] .preview-text { font-size: 38px; line-height: 48px; }
+    .status-line:not(:empty) { margin-top: 6px; }
     [data-size="large"] {
       --fs-caption: 13pt;
       --fs-body: 19px;
@@ -1748,7 +1769,7 @@
                 </div>
                 <button class="shortcut-record-btn" id="check-updates-btn">Check for updates</button>
               </div>
-              <div class="shortcut-hint" id="update-status" style="margin-top: 6px; min-height: 14px;"></div>
+              <div class="shortcut-hint status-line" id="update-status"></div>
             </div>
             <div class="settings-subsec">
               <div class="settings-section-label">Reset</div>
@@ -1758,7 +1779,7 @@
                 </div>
                 <button class="shortcut-record-btn" id="reset-app-btn">Reset app</button>
               </div>
-              <div class="shortcut-hint" id="reset-status" style="margin-top: 6px; min-height: 14px;"></div>
+              <div class="shortcut-hint status-line" id="reset-status"></div>
             </div>
           </div>
           <!-- Accessibility page -->
@@ -1825,16 +1846,22 @@
           <span class="shortcut-label">Select Word</span>
         </div>
         <div class="shortcut">
-          <kbd>SPACE</kbd>
+          <kbd>Space</kbd>
           <span class="shortcut-label">Commit</span>
         </div>
         <div class="shortcut">
-          <kbd>TAB</kbd>
+          <kbd>Tab</kbd>
           <span class="shortcut-label">Skip</span>
         </div>
         <div class="shortcut">
           <kbd><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M360-240 120-480l240-240 56 56-144 144h488v-160h80v240H272l144 144-56 56Z"/></svg></kbd>
           <span class="shortcut-label">Paste</span>
+        </div>
+      </div>
+      <div class="shortcuts hidden" id="settings-footer">
+        <div class="shortcut">
+          <kbd>Esc</kbd>
+          <span class="shortcut-label">Back</span>
         </div>
       </div>
     </div>
@@ -1993,6 +2020,23 @@
       document.documentElement.style.setProperty('--accent', hex);
       document.documentElement.style.setProperty('--accent-translucent', `rgba(${r},${g},${b},0.4)`);
       document.documentElement.style.setProperty('--hint-example-bg', `rgba(${r},${g},${b},0.4)`);
+      const { fill, on } = accentTextColors(r, g, b);
+      document.documentElement.style.setProperty('--accent-fill', fill);
+      document.documentElement.style.setProperty('--on-accent', on);
+    }
+
+    // Pick a fill + text colour pair with at least 4.5:1 contrast. Mid-tone
+    // accents get slightly darkened behind white text; bright ones keep their
+    // colour and get dark text instead of turning muddy.
+    function accentTextColors(r, g, b) {
+      const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+      const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      const hex = (r, g, b) => '#' + [r, g, b].map(c => Math.round(c).toString(16).padStart(2, '0')).join('');
+      for (let t = 0; t <= 0.25; t += 0.02) {
+        const m = [r, g, b].map(c => c * (1 - t));
+        if (1.05 / (lum(...m) + 0.05) >= 4.5) return { fill: hex(...m), on: '#fff' };
+      }
+      return { fill: hex(r, g, b), on: '#141414' };
     }
 
     function setAccentColor(hex) {
@@ -2304,6 +2348,21 @@
 
     settingsNavBtns.forEach(btn => btn.addEventListener('click', () => switchSettingsPage(btn.dataset.page)));
 
+    // ── Scroll fades ──
+    function updateScrollFade(el) {
+      const top = el.scrollTop > 1;
+      const bottom = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+      const v = top && bottom ? 'both' : top ? 'top' : bottom ? 'bottom' : '';
+      if (v) el.dataset.fade = v; else delete el.dataset.fade;
+    }
+    document.querySelectorAll('.settings-content, #preview-text, #tips-panel').forEach(el => {
+      const update = () => updateScrollFade(el);
+      el.addEventListener('scroll', update, { passive: true });
+      new ResizeObserver(update).observe(el);
+      new MutationObserver(() => requestAnimationFrame(update))
+        .observe(el, { childList: true, subtree: true, characterData: true, attributeFilter: ['class'] });
+    });
+
     // ── Accessibility ──
     function initAccessibility() {
       const largeText = localStorage.getItem('arabizi-large-text') === 'true';
@@ -2427,6 +2486,15 @@
       closeColorPicker();
       renderAll();
       inputEl.focus();
+    });
+
+    // The input is disabled in Settings, so its keydown handler never sees
+    // Escape there. Handle it at the document level instead.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !settingsOpen || isRecordingShortcut || e.defaultPrevented) return;
+      e.preventDefault();
+      if (!cpOverlay.classList.contains('hidden')) { closeColorPicker(); return; }
+      backBtn.click();
     });
 
     accentAutoBtn.addEventListener('click', () => {
@@ -3242,6 +3310,9 @@
       headerInputArea.classList.toggle('hidden', inSettings);
       settingsHeaderBar.classList.toggle('hidden', !inSettings);
       inputEl.disabled = inSettings;
+      // Typing shortcuts don't apply in Settings.
+      footerEl.querySelector('.shortcuts').classList.toggle('hidden', inSettings);
+      document.getElementById('settings-footer').classList.toggle('hidden', !inSettings);
 
       if (inSettings) {
         showView('settings');
@@ -3496,21 +3567,24 @@
     }
 
     function positionPicker() {
-      // Anchor below the suggestions list, inside the typing-panels area.
-      const anchor = suggestionList.getBoundingClientRect();
-      pickerEl.style.top = (anchor.top - 4) + 'px';
-      pickerEl.style.left = anchor.left + 'px';
-      // Snap inside viewport
+      // Drop down from the selected suggestion (the word being edited) so the
+      // panel label and header stay visible.
+      const list = suggestionList.getBoundingClientRect();
+      const row = (suggestionList.querySelector('.suggestion.selected') || suggestionList).getBoundingClientRect();
+      pickerEl.style.top = (row.bottom + 4) + 'px';
+      pickerEl.style.left = list.left + 'px';
       requestAnimationFrame(() => {
         const w = pickerEl.offsetWidth;
-        const margin = 8;
-        const maxLeft = window.innerWidth - w - margin;
-        const left = Math.min(Math.max(anchor.left, margin), maxLeft);
-        pickerEl.style.left = left + 'px';
-        // Place just above the first suggestion if there's room, else below.
         const h = pickerEl.offsetHeight;
-        const above = anchor.top - h - 6;
-        pickerEl.style.top = (above >= margin ? above : (anchor.bottom + 6)) + 'px';
+        const margin = 8;
+        const left = Math.min(Math.max(list.left, margin), window.innerWidth - w - margin);
+        pickerEl.style.left = left + 'px';
+        // Flip above the row if it would run into the footer, but never above
+        // the top of the suggestions list.
+        const footerTop = footerEl ? footerEl.getBoundingClientRect().top : window.innerHeight;
+        let top = row.bottom + 4;
+        if (top + h > footerTop - margin) top = Math.max(list.top, row.top - h - 4);
+        pickerEl.style.top = top + 'px';
       });
     }
 

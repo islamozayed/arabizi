@@ -347,7 +347,7 @@
     .starter-chip:hover,
     .starter-chip.selected {
       background: var(--accent-fill);
-      outline-color: var(--hint-example-outline);
+      outline-color: var(--accent-fill);
     }
     .starter-chip:hover .starter-ar,
     .starter-chip.selected .starter-ar { color: var(--on-accent); }
@@ -432,7 +432,7 @@
 
     .suggestion.selected {
       background: var(--accent-fill);
-      outline: 1px solid var(--hint-example-outline);
+      outline: 1px solid var(--accent-fill);
     }
 
     .suggestion.selected .ar { color: var(--on-accent); }
@@ -471,8 +471,8 @@
     .emoji-item:hover { background: var(--item-hover); }
 
     .emoji-item.selected {
-      background: var(--accent);
-      outline: 1px solid var(--hint-example-outline);
+      background: var(--accent-fill);
+      outline: 1px solid var(--accent-fill);
     }
 
     /* ── Letter picker (Cmd+G) ── */
@@ -529,7 +529,7 @@
     .letter-picker .lp-chip.selected {
       background: var(--accent-fill);
       color: var(--on-accent);
-      outline: 1px solid var(--hint-example-outline);
+      outline: 1px solid var(--accent-fill);
     }
     .letter-picker .lp-chip.disabled {
       opacity: 0.45;
@@ -882,7 +882,7 @@
     .settings-nav-btn.active {
       background: var(--accent-fill);
       color: var(--on-accent);
-      outline: 1px solid color-mix(in srgb, var(--on-accent) 20%, transparent);
+      outline: 1px solid var(--accent-fill);
     }
 
     .settings-content {

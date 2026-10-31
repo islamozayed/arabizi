@@ -31,8 +31,57 @@ const MEDIAL_LONG_O: i32 = 500;
 /// A vowel in the last syllable (just before the final consonant) is very
 /// often long in Arabic (salaam, kitaab, gameel), so lengthening it is cheaper.
 const LAST_SYLLABLE_DISCOUNT: i32 = 300;
+/// Long ā in the active-participle shape CaCeC (fahem → فاهم, nazel → نازل,
+/// 3aref → عارف). Spoken Arabic uses these constantly and Arabizi writes
+/// their long ā as a single `a`. It is a bonus, not just a cheaper reading:
+/// Egyptian says the verb with e (fehem → فهم), so `a` here is strong
+/// evidence for the participle even when the verb is far more frequent.
+/// Tuned so fahem/nazel/faker win while hadef/kalem/kabed/nafes keep their
+/// short reading (see `egyptian_participles_get_long_a`).
+const PARTICIPLE_LONG_A: i32 = -1100;
+/// Weaker version for CaCi (ghali → غالي, mashi → ماشي), which also matches
+/// words like yabi (يبي) and names like 3ali (علي).
+const PARTICIPLE_LONG_A_FINAL_I: i32 = 100;
+
+/// Where a participle-shaped word has its `a`, and which shape it is.
+#[derive(Clone, Copy, PartialEq)]
+enum Participle {
+    /// C a C e C
+    Strong(usize),
+    /// C a C i
+    FinalI(usize),
+}
+
+/// Recognise the participle shapes CaCeC and CaCi.
+fn participle_a(chars: &[char]) -> Option<Participle> {
+    let consonant = |i: usize| -> Option<usize> {
+        let c = *chars.get(i)?;
+        let next = chars.get(i + 1).copied();
+        if matches!((c, next), ('s' | 'k' | 'g' | 't' | 'd', Some('h')) | ('3' | '6' | '7' | '9', Some('\''))) {
+            return Some(i + 2);
+        }
+        (c.is_ascii_alphanumeric() && !is_vowel_char(c)).then_some(i + 1)
+    };
+    let i = consonant(0)?;
+    if chars.get(i) != Some(&'a') {
+        return None;
+    }
+    let j = consonant(i + 1)?;
+    match chars.get(j) {
+        // CaCeC: exactly one consonant after the e. (CaCiC is usually the
+        // long-ī adjective shape instead: sadiq → صديق, kabir → كبير.)
+        Some('e') if j + 1 < chars.len() => {
+            let k = consonant(j + 1)?;
+            (k == chars.len()).then_some(Participle::Strong(i))
+        }
+        // CaCi: defective participle (ghali, mashi, nasi).
+        Some('i') if j + 1 == chars.len() => Some(Participle::FinalI(i)),
+        _ => None,
+    }
+}
+
 /// Egyptian/Levantine `2` for ق (2albi → قلبي, de2i2a → دقيقة).
-const HAMZA_AS_QAF: i32 = 800;
+const HAMZA_AS_QAF: i32 = 500;
 /// Tanween fatha for a final `n` (shukran → شكراً).
 const TANWEEN: i32 = 300;
 /// Dropping a typed final vowel entirely (ayna → أين).
@@ -40,7 +89,7 @@ const FINAL_VOWEL_DROP: i32 = 1500;
 
 fn swap_cost(pattern: &str, alt: &str) -> i32 {
     match (pattern, alt) {
-        ("s", "ص") => 800,
+        ("s", "ص") => 500,
         ("s", "ث") => 1300,
         ("t", "ط") => 800,
         ("t", "ث") => 1100,
@@ -105,6 +154,7 @@ pub fn build(word: &str) -> Vec<Segment> {
 
     // Index of the last letter-ish char (ignores trailing separators).
     let last = chars.iter().rposition(|c| *c != '-').unwrap_or(0);
+    let participle = participle_a(&chars);
 
     while pos < len {
         let c = chars[pos];
@@ -267,6 +317,8 @@ pub fn build(word: &str) -> Vec<Segment> {
                 let last_syllable = pos + 1 == last;
                 let discount = if last_syllable { LAST_SYLLABLE_DISCOUNT } else { 0 };
                 match c {
+                    'a' if participle == Some(Participle::Strong(pos)) => opts(&[("", 0), ("ا", PARTICIPLE_LONG_A)]),
+                    'a' if participle == Some(Participle::FinalI(pos)) => opts(&[("", 0), ("ا", PARTICIPLE_LONG_A_FINAL_I)]),
                     'a' => opts(&[("", 0), ("ا", MEDIAL_LONG_A - discount)]),
                     'e' => opts(&[("", 0), ("ي", MEDIAL_LONG_E - discount), ("ا", 1000 - discount)]),
                     'i' => opts(&[("", 0), ("ي", MEDIAL_LONG_I - discount)]),

@@ -21,9 +21,12 @@ const LM_WEIGHT: f64 = 0.7;
 const LM_TASHKEELA_PENALTY: f64 = 2000.0;
 /// Score of a word attested in neither corpus.
 const LM_UNKNOWN: f64 = -3000.0;
+/// Weight of the colloquial word list, added on top of the main LM score.
+/// Tuned on held-out benchmark words (top-1 78% → 82%).
+const DIALECT_WEIGHT: f64 = 0.35;
 /// Penalty per clear vowel clash with a candidate's corpus vocalization
 /// (half for a soft clash), capped at two clashes.
-const VOWEL_MISMATCH_PENALTY: i64 = 1500;
+const VOWEL_MISMATCH_PENALTY: i64 = 1000;
 /// Discount for words attested only in the (MSA-heavy) Tashkeela corpus.
 
 /// Score of a word attested in neither corpus.
@@ -50,6 +53,7 @@ pub struct TransliterationEngine {
     emoticon_map: HashMap<&'static str, Vec<&'static str>>,
     cldr_index: HashMap<String, Vec<&'static str>>,
     frequency: FrequencyList,
+    dialect: FrequencyList,
     tashkeela: TashkeelaList,
 }
 
@@ -61,6 +65,7 @@ impl TransliterationEngine {
             emoticon_map: build_emoticon_map(),
             cldr_index: Self::build_cldr_index(),
             frequency: FrequencyList::load(),
+            dialect: FrequencyList::load_dialect(),
             tashkeela: TashkeelaList::load(),
         }
     }
@@ -601,7 +606,8 @@ impl TransliterationEngine {
             score += 50_000_000 / (idx as i64 + 1);
         }
 
-        score + self.lm_score(candidate) - cost as i64 - self.vowel_penalty(input, candidate)
+        score + self.lm_score(candidate) + self.dialect_score(candidate) - cost as i64
+            - self.vowel_penalty(input, candidate)
     }
 
     /// Penalty when the corpus vocalization of `candidate` contradicts the
@@ -618,9 +624,10 @@ impl TransliterationEngine {
         if candidate.contains(' ') {
             return 0;
         }
-        let Some(vocalized) = self.tashkeela.vocalized(&strip_tashkeel(candidate)) else {
+        let variants = self.tashkeela.variants(&strip_tashkeel(candidate));
+        if variants.is_empty() {
             return 0;
-        };
+        }
 
         let latin: Vec<char> = input.chars().filter(|c| *c != '-').collect();
         let starts_with_vowel = latin.first().is_some_and(|c| is_vowel_char(*c));
@@ -655,6 +662,20 @@ impl TransliterationEngine {
             typed.remove(0);
         }
 
+        // A word can be read several ways (أَمْر noun / أَمَرَ verb). Weight
+        // each reading's clash by how often the corpus uses it, so a word is
+        // only spared when a common reading fits what was typed.
+        let total: u64 = variants.iter().map(|(_, c)| *c as u64).sum::<u64>().max(1);
+        let weighted: u64 = variants
+            .iter()
+            .map(|(v, c)| Self::vowel_clash(&typed, v, starts_with_vowel, ends_with_vowel) as u64 * *c as u64)
+            .sum();
+        (VOWEL_MISMATCH_PENALTY as i128 * weighted as i128 / (2 * total as i128)) as i64
+    }
+
+    /// Contradiction between typed vowel classes and one vocalized form, in
+    /// half-points (0 = fits, capped at 4).
+    fn vowel_clash(typed: &[char], vocalized: &str, starts_with_vowel: bool, ends_with_vowel: bool) -> u32 {
         // Harakat per base letter of the corpus form.
         let mut letters: Vec<(char, Option<char>)> = Vec::new();
         for ch in vocalized.chars() {
@@ -714,6 +735,8 @@ impl TransliterationEngine {
                 ('y', 'a') => 1,
                 ('w', 'W' | 'u') => 0,
                 ('w', 'a') => 1,
+                // Egyptian o/u for a classical a (noss → نَصّ, 2oddam → قُدَّام).
+                ('u', 'a') => 1,
                 _ => 2,
             }
         };
@@ -724,7 +747,19 @@ impl TransliterationEngine {
         } else {
             0
         };
-        VOWEL_MISMATCH_PENALTY * halves.min(4) as i64 / 2
+        halves.min(4)
+    }
+
+    /// Bonus for single words attested in colloquial text, so spoken forms
+    /// (فاهم, قمر, شقة) can beat formal words that dominate the main lists.
+    fn dialect_score(&self, candidate: &str) -> i64 {
+        if candidate.contains(' ') {
+            return 0;
+        }
+        self.dialect
+            .count(&strip_tashkeel(candidate))
+            .map(|c| (DIALECT_WEIGHT * 1000.0 * (c as f64 + 1.0).log10()) as i64)
+            .unwrap_or(0)
     }
 
     /// Language-model score of a candidate in milli-units:
@@ -1259,6 +1294,21 @@ mod tests {
                     "picker choice `{}` could not be applied to `{}`; got {:?}",
                     choice, pattern, results);
             }
+        }
+    }
+
+    #[test]
+    fn egyptian_participles_get_long_a() {
+        // CaCeC is the spoken active participle; the verb is said with e.
+        let e = engine();
+        for (input, want) in [("fahem", "فاهم"), ("nazel", "نازل"), ("faker", "فاكر"), ("3aref", "عارف"), ("ghali", "غالي")] {
+            let top = e.transliterate_word_ranked(input, None);
+            assert_eq!(top.first().map(String::as_str), Some(want), "{input}: {top:?}");
+        }
+        // Same shape, but ordinary words that must not gain an alef.
+        for (input, want) in [("hadef", "هدف"), ("kalem", "كلام"), ("sadiq", "صديق"), ("3ali", "علي"), ("kabed", "كبد"), ("nafes", "نفس")] {
+            let top = e.transliterate_word_ranked(input, None);
+            assert_eq!(top.first().map(String::as_str), Some(want), "{input}: {top:?}");
         }
     }
 

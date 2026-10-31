@@ -113,3 +113,16 @@ node --test app/tests/*.test.cjs  # frontend regression tests
 ```
 
 The Tauri config lives in [`app/tauri.conf.json`](app/tauri.conf.json); the transliteration engine is a separate crate at [`engine/`](engine/).
+
+```bash
+cargo test -p arabizi-engine --release                                    # engine tests
+cargo test -p arabizi-engine --release --test benchmark -- --nocapture    # ranking accuracy report
+```
+
+## Data sources
+
+The engine ranks suggestions with word lists built from these corpora:
+
+- **OpenSubtitles 2018** word frequencies via [FrequencyWords](https://github.com/hermitdave/FrequencyWords) (CC-BY-SA-4.0) — `engine/data/ar_300k.txt`
+- **Tashkeela** vocalized Arabic corpus, Taha Zerrouki (GPL-2.0) — `engine/data/tashkeela_vocalized.txt`, built by `engine/scripts/build_tashkeela.py`
+- **ASTD** Arabic Sentiment Tweets Dataset, Nabil et al. (GPL-2.0) and **LABR** Large-scale Arabic Book Reviews, Aly & Atiya (GPL-2.0) — colloquial word counts in `engine/data/eg_freq.txt`, built by `engine/scripts/build_eg_freq.py`

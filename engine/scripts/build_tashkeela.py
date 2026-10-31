@@ -11,9 +11,13 @@ Pipeline:
   3. Keep only tokens whose base (tashkeel-stripped) is pure Arabic letters
      AND that carry at least one tashkeel mark (so we don't dilute the file
      with already-unvocalized noise).
-  4. For each base form, pick the most-frequent vocalized variant.
-  5. Sort by base-form frequency descending, cap at MAX_ENTRIES.
-  6. Write `vocalized<TAB>count` lines.
+  4. For each base form, keep its common vocalized variants: the most
+     frequent one always, plus others with at least MIN_SHARE of the base's
+     uses (up to MAX_VARIANTS), for the VARIANT_BASES most common bases.
+     The engine needs these to tell e.g. the noun أَمْر from the verb أَمَرَ.
+  5. Sort by base-form frequency descending, cap at MAX_ENTRIES bases.
+  6. Write `vocalized<TAB>count` lines, one per variant, most frequent
+     variant of each base first (count = that variant's own count).
 
 Run:
     python build_tashkeela.py                # downloads to ./.cache/
@@ -44,6 +48,9 @@ HF_PARQUET_URLS = [
 ]
 
 MAX_ENTRIES = 500_000
+MAX_VARIANTS = 4
+MIN_SHARE = 0.05
+VARIANT_BASES = 150_000
 TASHKEEL_CHARS = set("ًٌٍَُِّْٰ")
 # Allow Arabic letters (incl. hamza forms) and combining marks.
 ARABIC_LETTER_RE = re.compile(r"^[ء-ي٠-٩ٰ-ۓً-ْ]+$")
@@ -150,6 +157,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", help="Path to a local Tashkeela .zip (skips HF download)")
     ap.add_argument("--max-entries", type=int, default=MAX_ENTRIES)
+    ap.add_argument("--max-variants", type=int, default=MAX_VARIANTS)
+    ap.add_argument("--min-share", type=float, default=MIN_SHARE)
+    ap.add_argument("--variant-bases", type=int, default=VARIANT_BASES)
     args = ap.parse_args()
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -168,17 +178,22 @@ def main():
 
     base_counts, variant_counts = tokenize_and_count(stream)
 
-    # Pick the most common vocalized variant for each base.
     pairs = []
-    for base, count in base_counts.most_common(args.max_entries):
-        best_vocal = variant_counts[base].most_common(1)[0][0]
-        pairs.append((best_vocal, count))
+    for i, (base, count) in enumerate(base_counts.most_common(args.max_entries)):
+        limit = args.max_variants if i < args.variant_bases else 1
+        variants = variant_counts[base].most_common(limit)
+        kept = [variants[0]] + [(v, c) for v, c in variants[1:] if c >= args.min_share * count]
+        # The first line absorbs rare dropped variants, so each base's lines
+        # sum to its total (the engine sums them back into one count).
+        others = sum(c for _, c in kept[1:])
+        pairs.append((kept[0][0], count - others))
+        pairs.extend(kept[1:])
 
     OUTPUT.write_text(
         "\n".join(f"{v}\t{c}" for v, c in pairs) + "\n",
         encoding="utf-8",
     )
-    print(f"[wrote] {OUTPUT} ({len(pairs):,} entries, "
+    print(f"[wrote] {OUTPUT} ({len(pairs):,} lines, "
           f"{OUTPUT.stat().st_size:,} bytes)",
           file=sys.stderr)
 

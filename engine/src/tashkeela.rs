@@ -18,11 +18,15 @@ pub struct TashkeelaList {
     /// base form (tashkeel-stripped) → (rank (0 = most common), corpus count
     /// summed over variants, best vocalized variant from the corpus).
     entries: HashMap<String, (u32, u32, &'static str)>,
+    /// Every vocalized variant with its count, only for bases that have more
+    /// than one (e.g. أَمْر the noun and أَمَرَ the verb). Most-frequent first.
+    variants: HashMap<String, Vec<(&'static str, u32)>>,
 }
 
 impl TashkeelaList {
     pub fn load() -> Self {
         let mut entries: HashMap<String, (u32, u32, &'static str)> = HashMap::new();
+        let mut variants: HashMap<String, Vec<(&'static str, u32)>> = HashMap::new();
         for (rank, line) in TASHKEELA_DATA.lines().enumerate() {
             let line = line.trim();
             if line.is_empty() {
@@ -36,14 +40,21 @@ impl TashkeelaList {
             if base.is_empty() {
                 continue;
             }
-            // First occurrence wins — file is pre-sorted by descending freq,
-            // so the most-frequent vocalized variant is what we keep.
-            entries
-                .entry(base)
-                .and_modify(|e| e.1 += count)
-                .or_insert((rank as u32, count, vocal));
+            // First occurrence is the most-frequent variant (the file lists
+            // each base's variants together, most frequent first). Later lines
+            // for the same base are extra variants; counts add up.
+            match entries.get_mut(&base) {
+                Some(e) => {
+                    let first = (e.2, e.1);
+                    e.1 += count;
+                    variants.entry(base).or_insert_with(|| vec![first]).push((vocal, count));
+                }
+                None => {
+                    entries.insert(base, (rank as u32, count, vocal));
+                }
+            }
         }
-        TashkeelaList { entries }
+        TashkeelaList { entries, variants }
     }
 
     /// Rank of a base (unvocalized) form. Lower = more common.
@@ -55,6 +66,15 @@ impl TashkeelaList {
     /// Corpus count of a base (unvocalized) form.
     pub fn count(&self, base: &str) -> Option<u32> {
         self.entries.get(base).map(|e| e.1)
+    }
+
+    /// All known vocalized variants of a base form with their counts,
+    /// most frequent first. Empty if the base is unknown.
+    pub fn variants(&self, base: &str) -> Vec<(&'static str, u32)> {
+        if let Some(v) = self.variants.get(base) {
+            return v.clone();
+        }
+        self.entries.get(base).map(|e| vec![(e.2, e.1)]).unwrap_or_default()
     }
 
     /// Most-frequent vocalized variant for a base form, if known.

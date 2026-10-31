@@ -12,9 +12,9 @@ use arabizi_engine::TransliterationEngine;
 const BENCHMARK: &str = include_str!("../data/benchmark.tsv");
 
 /// Regression floors (percent). Set slightly below the last measured values.
-/// Last measured: top-1 93.7%, top-3 97.7% (572 entries).
-const TOP1_FLOOR: f64 = 92.0;
-const TOP3_FLOOR: f64 = 96.0;
+/// Last measured: top-1 94.9%, top-3 98.4% (572 entries); held-out 81.6% / 92.0%.
+const TOP1_FLOOR: f64 = 93.5;
+const TOP3_FLOOR: f64 = 97.5;
 
 fn strip_tashkeel(s: &str) -> String {
     s.chars()

@@ -4,6 +4,11 @@ use std::collections::HashMap;
 /// 300k most frequent words — used to rank transliteration candidates.
 const FREQUENCY_DATA: &str = include_str!("../data/ar_300k.txt");
 
+/// Colloquial (mostly Egyptian) word counts from the ASTD tweets and LABR
+/// book-review corpora (both GPL-2.0). Built by `scripts/build_eg_freq.py`.
+/// OpenSubtitles and Tashkeela lean formal; this nudges spoken forms up.
+const DIALECT_DATA: &str = include_str!("../data/eg_freq.txt");
+
 pub struct FrequencyList {
     /// Maps Arabic word → (frequency rank (0 = most common), raw corpus count).
     entries: HashMap<String, (u32, u32)>,
@@ -11,8 +16,17 @@ pub struct FrequencyList {
 
 impl FrequencyList {
     pub fn load() -> Self {
+        Self::parse(FREQUENCY_DATA)
+    }
+
+    /// The colloquial word list (see `DIALECT_DATA`).
+    pub fn load_dialect() -> Self {
+        Self::parse(DIALECT_DATA)
+    }
+
+    fn parse(data: &str) -> Self {
         let mut entries: HashMap<String, (u32, u32)> = HashMap::with_capacity(300_000);
-        for (rank, line) in FREQUENCY_DATA.lines().enumerate() {
+        for (rank, line) in data.lines().enumerate() {
             if let Some((word, freq)) = line.rsplit_once(' ') {
                 let count = freq.trim().parse::<u32>().unwrap_or(1);
                 entries

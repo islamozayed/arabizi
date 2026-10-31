@@ -43,7 +43,13 @@
     /* === Theme Variables === */
     :root {
       --font: 'Manrope', system-ui, sans-serif;
+      /* Type scale. Captions/labels < body < titles; Arabic lists sit a step
+         above Latin body because Arabic reads smaller at the same px. */
       --font-size-min: 11pt;
+      --fs-caption: var(--font-size-min);
+      --fs-body: 16px;
+      --fs-title: 18px;
+      --fs-ar-list: 18px;
       --font-ar: 'Rubik', 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif;
       --accent: #58A1AC;
       --accent-translucent: rgba(88, 161, 172, 0.4);
@@ -55,8 +61,8 @@
       --bg-surface: rgba(33, 33, 33, 0.6);
       --outline: #717171;
       --text-primary: #ffffff;
-      --text-secondary: rgba(255, 255, 255, 0.6);
-      --text-tertiary: rgba(255, 255, 255, 0.4);
+      --text-secondary: rgba(255, 255, 255, 0.7);
+      --text-tertiary: rgba(255, 255, 255, 0.55);
       --hint-example-bg: rgba(88, 161, 172, 0.4);
       --hint-example-outline: rgba(255, 255, 255, 0.2);
       --kbd-bg: rgba(255, 255, 255, 0.1);
@@ -77,8 +83,8 @@
       --bg-surface: rgba(245, 245, 245, 0.6);
       --outline: #c8c8c8;
       --text-primary: #1a1a1a;
-      --text-secondary: rgba(0, 0, 0, 0.55);
-      --text-tertiary: rgba(0, 0, 0, 0.35);
+      --text-secondary: rgba(0, 0, 0, 0.68);
+      --text-tertiary: rgba(0, 0, 0, 0.56);
       --hint-example-bg: rgba(88, 161, 172, 0.18);
       --hint-example-outline: rgba(0, 0, 0, 0.1);
       --kbd-bg: rgba(0, 0, 0, 0.06);
@@ -174,7 +180,7 @@
       outline: 1px solid var(--hint-example-outline);
       border-radius: 4px;
       color: var(--text-primary);
-      font: 16px/20px sans-serif;
+      font: 16px/20px var(--font);
       cursor: pointer;
       pointer-events: auto;
       z-index: 2;
@@ -209,7 +215,7 @@
     .back-btn:hover { background: var(--item-hover); }
 
     .settings-header-title {
-      font: 600 var(--font-size-min) var(--font);
+      font: 600 var(--fs-title) var(--font);
       color: var(--text-primary);
     }
 
@@ -255,9 +261,9 @@
     .mapping-section-label {
       font-size: var(--font-size-min);
       font-weight: 600;
-      color: var(--text-tertiary);
+      color: var(--text-secondary);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.06em;
       margin-top: 8px;
     }
 
@@ -300,9 +306,11 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 4px 6px;
       margin-top: 4px;
+      direction: rtl;
     }
 
     .starter-chip {
+      direction: ltr;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -324,8 +332,8 @@
     }
 
     .starter-chip .starter-ar {
-      font: 16px var(--font-ar);
-      line-height: 22px;
+      font: var(--fs-ar-list) var(--font-ar);
+      line-height: 24px;
       white-space: nowrap;
       color: var(--text-primary);
       margin-left: auto;
@@ -409,7 +417,11 @@
     .suggestion.selected .ar { color: #fff; }
 
     .suggestion .ar {
-      font: 16px/20px var(--font-ar);
+      font: var(--fs-ar-list)/24px var(--font-ar);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       color: var(--text-primary);
       direction: rtl;
       text-align: right;
@@ -547,7 +559,7 @@
     }
     .shortcuts-row:hover { background: var(--item-hover); }
     .shortcuts-label {
-      font: var(--font-size-min)/1.3 var(--font);
+      font: var(--fs-body)/1.3 var(--font);
       color: var(--text-primary);
     }
     .shortcuts-keys {
@@ -666,7 +678,7 @@
       color: var(--text-primary);
       padding: 6px 10px;
       border-radius: 8px;
-      font: var(--font-size-min)/1.3 var(--font-ar);
+      font: var(--fs-caption)/1.3 var(--font);
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
       display: flex;
       align-items: center;
@@ -675,7 +687,7 @@
       transform: translateY(2px);
       transition: opacity 0.12s, transform 0.12s;
       pointer-events: none;
-      max-width: 220px;
+      max-width: 280px;
     }
     .cmdg-tip.show {
       opacity: 1;
@@ -683,8 +695,8 @@
       pointer-events: auto;
     }
     .cmdg-tip kbd {
-      font: var(--font-size-min)/1 var(--font-ar);
-      background: rgba(255,255,255,0.12);
+      font: 500 var(--fs-caption)/1 var(--font);
+      background: var(--kbd-bg);
       border: none;
       border-radius: 4px;
       padding: 4px 6px;
@@ -717,8 +729,8 @@
       width: 100%;
       max-width: 380px;
       max-height: 80vh;
-      background: var(--bg-primary, #1a1a1c);
-      border: 1px solid var(--panel-border, rgba(255,255,255,0.08));
+      background: var(--overlay-glass-bg);
+      border: 1px solid var(--overlay-glass-border);
       border-radius: 12px;
       padding: 18px 20px 14px;
       display: flex;
@@ -727,16 +739,16 @@
       box-shadow: 0 16px 48px rgba(0,0,0,0.5);
     }
     .changelog-modal h2 {
-      font: 600 var(--font-size-min)/1.2 var(--font-ar);
+      font: 600 var(--fs-title)/1.25 var(--font);
       color: var(--text-primary);
       margin: 0;
     }
     .changelog-modal .changelog-version {
-      font: var(--font-size-min)/1 var(--font-ar);
-      color: var(--text-secondary, rgba(255,255,255,0.55));
+      font: var(--fs-caption)/1 var(--font);
+      color: var(--text-secondary);
     }
     .changelog-modal .changelog-body {
-      font: var(--font-size-min)/1.5 var(--font-ar);
+      font: var(--fs-caption)/1.5 var(--font);
       color: var(--text-primary);
       overflow-y: auto;
       white-space: pre-wrap;
@@ -756,7 +768,7 @@
       border: none;
       border-radius: 6px;
       padding: 6px 14px;
-      font: var(--font-size-min)/1 var(--font-ar);
+      font: 600 var(--fs-caption)/1 var(--font);
       cursor: pointer;
     }
 
@@ -874,9 +886,9 @@
 
     .settings-section-label {
       font: 600 var(--font-size-min) var(--font);
-      color: var(--text-tertiary);
+      color: var(--text-secondary);
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.06em;
     }
 
     /* Theme visual previews */
@@ -980,8 +992,8 @@
     }
 
     .toggle-label {
-      font: var(--font-size-min) var(--font);
-      color: var(--text-secondary);
+      font: var(--fs-body)/1.3 var(--font);
+      color: var(--text-primary);
     }
 
     .toggle {
@@ -1151,11 +1163,11 @@
       justify-content: center;
       min-width: 24px;
       min-height: 24px;
-      padding: 2px 6px;
+      padding: 0 6px;
       background: var(--kbd-bg);
       border: none;
       border-radius: 4px;
-      font: var(--font-size-min)/1.3 sans-serif;
+      font: 500 var(--fs-caption)/1 var(--font);
       color: var(--icon-fill);
     }
 
@@ -1495,9 +1507,13 @@
     [data-size="large"] #arabizi-input { font-size: 19px; }
     [data-size="large"] .hint-text { font-size: 18px; }
     [data-size="large"] .preview-text { font-size: 38px; line-height: 48px; }
-    [data-size="large"] .suggestion .ar { font-size: 18px; line-height: 24px; }
-    [data-size="large"] .toggle-label { font-size: 16px; }
-    [data-size="large"] .settings-section-label { font-size: 16px; }
+    [data-size="large"] {
+      --fs-caption: 13pt;
+      --fs-body: 19px;
+      --fs-title: 21px;
+      --fs-ar-list: 21px;
+    }
+    [data-size="large"] .suggestion .ar { line-height: 28px; }
 
     [data-contrast="high"][data-theme="dark"] {
       --text-primary: #ffffff;
@@ -2445,6 +2461,7 @@
     document.getElementById('hint-example').addEventListener('click', async (e) => {
       e.stopPropagation();
       const text = 'ahlan wa sahlan';
+      cancelPendingTransliteration();
       inputEl.value = text;
       updateInputHint();
       currentInput = text;
@@ -2499,77 +2516,139 @@
       settingsOpen = false;
       selectedStarterIdx = -1;
       closeColorPicker();
+      cancelPendingTransliteration();
       inputEl.value = '';
       renderAll();
       setTimeout(() => inputEl.focus(), 50);
     });
 
     // ── Input handler ──
+    // Suggestions are fetched asynchronously after each keystroke. Keys that
+    // act on them (Space, Enter, Tab, arrows) must never act on results for an
+    // older prefix of the word, so every run is tagged with a sequence number,
+    // stale replies are dropped, and those keys flush any pending run first.
     let debounce;
+    let translitSeq = 0;
+    let translitPending = false;
+    let translitInflight = null; // { raw, promise }
+
+    function cancelPendingTransliteration() {
+      clearTimeout(debounce);
+      translitSeq++;
+      translitPending = false;
+      translitInflight = null;
+    }
+
+    async function runTransliteration() {
+      const seq = ++translitSeq;
+      const raw = inputEl.value;
+      const isStale = () => seq !== translitSeq || inputEl.value !== raw;
+      currentInput = raw.trim();
+
+      if (!currentInput) {
+        currentCandidates = [];
+        currentEmojis = [];
+        // Emptying the input ends the lock: whatever the user pinned was
+        // tied to the prior spelling. Without this, tabbing a starter then
+        // backspacing through it would leave the starter glued to the top
+        // of suggestions for any new word they type.
+        editingPin = null;
+        selectedIdx = 0;
+        emojiMode = false;
+        selectedEmojiIdx = 0;
+        translitPending = false;
+        renderAll();
+        return;
+      }
+
+      // Reconcile any locked letter picks against the new input (drops
+      // overrides whose anchor position no longer matches a slot of the
+      // same Latin pattern).
+      await reconcileOverrides();
+      if (isStale()) return;
+      // Picker open while typing → close it; the slots may have shifted.
+      if (pickerOpen) closePicker();
+
+      const result = hasOverrides()
+        ? await invoke('transliterate_with_overrides', { input: currentInput, overrides: letterOverrides })
+        : await invoke('transliterate', { input: currentInput });
+      if (isStale()) return;
+      if (result.words.length > 0) {
+        if (editingWordIdx < 0 && result.words.length > 1) {
+          const done = result.words.length - 1;
+          while (result.words.length > 1) {
+            const w = result.words.shift();
+            committedWords.push({
+              input: w.input,
+              arabic: w.candidates[0] || '',
+              candidates: w.candidates,
+            });
+          }
+          // Drop the committed words from the box so the next keystroke
+          // doesn't commit them again.
+          inputEl.value = raw.replace(new RegExp('^\\s*(?:\\S+\\s+){' + done + '}'), '');
+        }
+        const lastWord = result.words[result.words.length - 1];
+        currentCandidates = lastWord.candidates;
+        currentEmojis = lastWord.emojis || [];
+        currentInput = lastWord.input;
+      } else {
+        currentCandidates = [];
+        currentEmojis = [];
+      }
+      applyEditingPin();
+      selectedIdx = 0;
+      emojiMode = false;
+      selectedEmojiIdx = 0;
+      renderAll();
+      translitPending = false;
+    }
+
+    function startTransliteration() {
+      const raw = inputEl.value;
+      const promise = runTransliteration().finally(() => {
+        if (translitInflight && translitInflight.promise === promise) translitInflight = null;
+      });
+      translitInflight = { raw, promise };
+      return promise;
+    }
+
+    // Bring suggestions up to date with the input right now.
+    async function flushTransliteration() {
+      if (!translitPending) return;
+      if (translitInflight && translitInflight.raw === inputEl.value) {
+        await translitInflight.promise;
+        if (!translitPending) return;
+      }
+      clearTimeout(debounce);
+      await startTransliteration();
+    }
+
     inputEl.addEventListener('input', () => {
       updateInputHint();
       // Typing kills any pending tip — slots may have shifted.
       clearTimeout(cmdgKbdTimer);
       hideCmdgTip();
       clearTimeout(debounce);
-      debounce = setTimeout(async () => {
-        const raw = inputEl.value;
-        currentInput = raw.trim();
-
-        if (!currentInput) {
-          currentCandidates = [];
-          currentEmojis = [];
-          // Emptying the input ends the lock: whatever the user pinned was
-          // tied to the prior spelling. Without this, tabbing a starter then
-          // backspacing through it would leave the starter glued to the top
-          // of suggestions for any new word they type.
-          editingPin = null;
-          selectedIdx = 0;
-          emojiMode = false;
-          selectedEmojiIdx = 0;
-          renderAll();
-          return;
-        }
-
-        // Reconcile any locked letter picks against the new input (drops
-        // overrides whose anchor position no longer matches a slot of the
-        // same Latin pattern).
-        await reconcileOverrides();
-        // Picker open while typing → close it; the slots may have shifted.
-        if (pickerOpen) closePicker();
-
-        const result = hasOverrides()
-          ? await invoke('transliterate_with_overrides', { input: currentInput, overrides: letterOverrides })
-          : await invoke('transliterate', { input: currentInput });
-        if (result.words.length > 0) {
-          if (editingWordIdx < 0) {
-            while (result.words.length > 1) {
-              const w = result.words.shift();
-              committedWords.push({
-                input: w.input,
-                arabic: w.candidates[0] || '',
-                candidates: w.candidates,
-              });
-            }
-          }
-          const lastWord = result.words[result.words.length - 1];
-          currentCandidates = lastWord.candidates;
-          currentEmojis = lastWord.emojis || [];
-          currentInput = lastWord.input;
-        } else {
-          currentCandidates = [];
-          currentEmojis = [];
-        }
-        applyEditingPin();
-        selectedIdx = 0;
-        emojiMode = false;
-        selectedEmojiIdx = 0;
-        renderAll();
-      }, 30);
+      translitPending = true;
+      debounce = setTimeout(startTransliteration, 30);
     });
 
     // ── Keyboard ──
     inputEl.addEventListener('keydown', async (e) => {
+      // Keys that act on the suggestions must not use ones for an older
+      // prefix of the word.
+      if (translitPending && !settingsOpen && !pickerOpen && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Let Space type a real space: the input handler splits multi-word
+        // input and commits each finished word. Waiting here instead would
+        // let keys typed during the wait land before the space.
+        if (e.key === ' ') return;
+        if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          await flushTransliteration();
+        }
+      }
+
       // Cmd+G (macOS) / Ctrl+G (Win/Linux): open or cycle the letter picker.
       // Captured early so it wins against any browser default.
       if ((e.metaKey || e.ctrlKey) && (e.key === 'g' || e.key === 'G')) {
@@ -2591,7 +2670,7 @@
       // already committed something — the starters live on the landing panel
       // and only show when the input is clear, so by definition there's
       // nothing else to act on here.
-      const onLanding = !currentInput && !settingsOpen && committedWords.length === 0;
+      const onLanding = !currentInput && !inputEl.value.trim() && !settingsOpen && committedWords.length === 0;
       if (onLanding && starters.length > 0 && !pickerOpen) {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
             e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -2702,6 +2781,7 @@
         } else if (editingWordIdx >= 0) {
           editingWordIdx = -1;
           editingPin = null;
+          cancelPendingTransliteration();
           inputEl.value = '';
           currentCandidates = [];
           currentInput = '';
@@ -2793,6 +2873,7 @@
           committedWords.push({ input: raw, arabic: raw, candidates: [raw], emojis: [] });
         }
         editingPin = null;
+        cancelPendingTransliteration();
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
@@ -2826,6 +2907,7 @@
           committedWords.pop();
         }
         editingPin = null;
+        cancelPendingTransliteration();
         inputEl.value = '';
         currentInput = '';
         currentCandidates = [];
@@ -2898,7 +2980,7 @@
       } else {
         committedWords.push({ input: currentInput, arabic, candidates: currentCandidates, emojis: currentEmojis, overrides: overridesForWord });
       }
-      clearTimeout(debounce);
+      cancelPendingTransliteration();
       inputEl.value = '';
       currentInput = '';
       currentCandidates = [];
@@ -2918,9 +3000,9 @@
     }
 
     window.editWord = function(idx) {
-      clearTimeout(debounce);
       editingWordIdx = idx;
       const w = committedWords[idx];
+      cancelPendingTransliteration();
       inputEl.value = w.input;
       currentInput = w.input;
       currentCandidates = [...w.candidates];
@@ -3141,6 +3223,7 @@
         overrides: {},
       });
       selectedStarterIdx = -1;
+      cancelPendingTransliteration();
       inputEl.value = '';
       currentInput = '';
       currentCandidates = [];

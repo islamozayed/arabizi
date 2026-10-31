@@ -1175,6 +1175,16 @@ mod tests {
     }
 
     #[test]
+    fn no_latin_letters_leak_into_output() {
+        let e = engine();
+        for word in ["spaced", "abc", "cairo", "allcaps"] {
+            let results = e.transliterate_word_ranked(word, None);
+            let top = results.first().expect("at least one candidate");
+            assert!(!top.chars().any(|c| c.is_ascii_alphabetic()), "Latin letter left in {top:?} for {word:?}");
+        }
+    }
+
+    #[test]
     fn dictionary_word_habibi() {
         let e = engine();
         let results = e.transliterate("7abibi");

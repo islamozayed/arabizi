@@ -73,10 +73,18 @@ fn extract_punctuation(word: &str) -> (String, String, String) {
     (prefix, core, suffix)
 }
 
+/// Invisible direction-control characters would otherwise be pasted into the
+/// target app and can reorder the text around the cursor.
+fn strip_bidi_controls(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'))
+        .collect()
+}
+
 #[tauri::command]
 fn transliterate(state: tauri::State<'_, Mutex<AppState>>, input: String) -> TransliterateResult {
     let state = state.lock().unwrap();
-    let input_lower = input.trim().to_lowercase();
+    let input_lower = strip_bidi_controls(input.trim()).to_lowercase();
 
     if input_lower.is_empty() {
         return TransliterateResult {
@@ -180,7 +188,7 @@ fn transliterate_with_overrides(
     overrides: HashMap<usize, String>,
 ) -> TransliterateResult {
     let state = state.lock().unwrap();
-    let input_lower = input.trim().to_lowercase();
+    let input_lower = strip_bidi_controls(input.trim()).to_lowercase();
 
     if input_lower.is_empty() {
         return TransliterateResult { combined: String::new(), words: vec![] };

@@ -16,11 +16,12 @@ for (const ending of ['\n', '\r\n']) {
         writeFileSync(target, readFileSync(join(repo, file), 'utf8').replace(/\r?\n/g, ending));
       }
       const version = JSON.parse(readFileSync(join(repo, 'app/tauri.conf.json'), 'utf8')).version;
+      const { title } = JSON.parse(readFileSync(join(repo, 'app/ui/CHANGELOG.json'), 'utf8')).versions[0];
       const env = { ...process.env, GITHUB_REF: `refs/tags/v${version}`, GITHUB_OUTPUT: join(fixture, 'output') };
       const run = () => spawnSync(process.execPath, [join(fixture, 'scripts/release-notes.cjs')], { env, encoding: 'utf8' });
       const valid = run();
       assert.equal(valid.status, 0, valid.stderr);
-      assert.match(valid.stdout, /One instance at a time/);
+      assert.ok(valid.stdout.startsWith(`${title}\n\n- `), 'notes must open with the latest changelog title');
       assert.doesNotMatch(valid.stdout, /siri|writing tools/i);
       assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /body<</);
       env.GITHUB_REF = 'refs/tags/v0.0.0';

@@ -1,6 +1,20 @@
 {
   "versions": [
     {
+      "version": "0.9.3",
+      "date": "2026-10-31",
+      "title": "Smarter suggestions, a clipboard that stays put, and smoother typing",
+      "items": [
+        "<strong>The right word, first try.</strong> Suggestions have been rebuilt from the ground up, so the word you mean lands on top far more often — including everyday Egyptian words like <em>fahem</em> (فاهم), <em>nazel</em> (نازل), and <em>salamat</em> (سلامات).",
+        "<strong>Your clipboard is safe.</strong> Pasting from Franconvert no longer wipes out what you had copied before. It's put back right after the paste.",
+        "<strong>Pastes land where you expect.</strong> Franconvert now waits until the app you were typing in is ready, so a paste doesn't go missing when switching takes a moment.",
+        "<strong>Fast typing just works.</strong> Hitting Space, Enter, or Tab right after you type now always uses the word you actually typed, never an older one.",
+        "<strong>Easier on the eyes.</strong> Clearer text sizes, better contrast in light mode, and accent colours that keep text readable whichever colour you pick.",
+        "<strong>Little things that add up.</strong> Esc closes Settings, scrollable areas fade at the edge when there's more to see, the letter picker no longer covers your suggestions, and Franconvert checks for updates every few hours while it's running.",
+        "<strong>Friendlier for screen readers and keyboards.</strong> Suggestions, buttons, and switches are announced properly, and everything in Settings can be used from the keyboard."
+      ]
+    },
+    {
       "version": "0.9.2",
       "date": "2026-10-31",
       "title": "A roomier widget, clearer text, and one app instance",

@@ -4,6 +4,12 @@ use std::collections::HashMap;
 /// Maps: arabizi_input → { arabic_candidate → selection_count }
 ///
 /// This allows the engine to boost previously chosen translations to the top.
+/// Upper bound on remembered inputs. Each entry is ~50 bytes of JSON, so this
+/// keeps the file around 250 KB at most.
+const MAX_INPUTS: usize = 5000;
+/// Spellings remembered per input.
+const MAX_CANDIDATES_PER_INPUT: usize = 8;
+
 #[derive(Default, Clone)]
 pub struct UserPreferences {
     selections: HashMap<String, HashMap<String, u32>>,
@@ -19,6 +25,40 @@ impl UserPreferences {
         let input = input.to_lowercase();
         let entry = self.selections.entry(input).or_default();
         *entry.entry(arabic.to_string()).or_insert(0) += 1;
+        if entry.len() > MAX_CANDIDATES_PER_INPUT {
+            // Forget the least-chosen spelling for this word.
+            let weakest = entry
+                .iter()
+                .filter(|(a, _)| a.as_str() != arabic)
+                .min_by_key(|(_, c)| **c)
+                .map(|(a, _)| a.clone());
+            if let Some(weakest) = weakest { entry.remove(&weakest); }
+        }
+        if self.selections.len() > MAX_INPUTS {
+            self.decay();
+        }
+    }
+
+    /// Halve every count and drop entries that reach zero, until we're back
+    /// under the cap. Words the user keeps choosing survive; one-offs from long
+    /// ago fade out. Keeps the prefs file (rewritten on every pick) small.
+    fn decay(&mut self) {
+        while self.selections.len() > MAX_INPUTS * 9 / 10 {
+            for candidates in self.selections.values_mut() {
+                candidates.values_mut().for_each(|c| *c /= 2);
+                candidates.retain(|_, c| *c > 0);
+            }
+            self.selections.retain(|_, candidates| !candidates.is_empty());
+        }
+    }
+
+    /// Number of distinct inputs remembered.
+    pub fn len(&self) -> usize {
+        self.selections.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.selections.is_empty()
     }
 
     /// Get the selection count for a specific input→arabic pair.
@@ -212,6 +252,19 @@ mod tests {
         let loaded = UserPreferences::from_json(&json);
         assert_eq!(loaded.score("shukran", "شكرًا"), 2);
         assert_eq!(loaded.score("ahlan", "أهلاً"), 1);
+    }
+
+    #[test]
+    fn stays_bounded_and_keeps_frequent_words() {
+        let mut prefs = UserPreferences::new();
+        for _ in 0..20 { prefs.record("ahlan", "أهلاً"); }
+        for i in 0..(MAX_INPUTS * 2) { prefs.record(&format!("w{i}"), "x"); }
+        assert!(prefs.len() <= MAX_INPUTS);
+        assert!(prefs.score("ahlan", "أهلاً") > 0, "frequent pick should survive decay");
+
+        for i in 0..20 { prefs.record("yalla", &format!("v{i}")); }
+        assert!(prefs.known_candidates("yalla").len() <= MAX_CANDIDATES_PER_INPUT);
+        assert_eq!(prefs.score("yalla", "v19"), 1, "latest pick is always kept");
     }
 
     #[test]

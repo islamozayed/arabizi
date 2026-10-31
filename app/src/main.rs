@@ -251,6 +251,18 @@ fn lookup_vocalized(state: tauri::State<'_, Mutex<AppState>>, arabic: String) ->
     state.engine.lookup_vocalized(arabic.trim())
 }
 
+/// Write via a temp file + rename so a crash mid-write can't leave a
+/// truncated prefs file (which would silently reset everything learned).
+/// Serialized so two quick picks can't interleave their writes.
+fn write_atomic(path: &PathBuf, contents: &str) {
+    static WRITE_LOCK: Mutex<()> = Mutex::new(());
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = path.with_extension("json.tmp");
+    if fs::write(&tmp, contents).is_ok() {
+        let _ = fs::rename(&tmp, path);
+    }
+}
+
 #[tauri::command]
 fn record_selection(state: tauri::State<'_, Mutex<AppState>>, input: String, arabic: String) {
     let mut state = state.lock().unwrap();
@@ -258,7 +270,7 @@ fn record_selection(state: tauri::State<'_, Mutex<AppState>>, input: String, ara
     let json = state.prefs.to_json();
     let path = state.prefs_path.clone();
     drop(state);
-    let _ = fs::write(path, json);
+    write_atomic(&path, &json);
 }
 
 // ── Accent color ──────────────────────────────────────────────────────────────
@@ -739,17 +751,32 @@ fn send_paste_keystroke() {
 }
 
 /// Hide the overlay, return focus to the app that was frontmost before we
-/// opened, and send Cmd+V (or Ctrl+V) so the clipboard contents land in that
-/// app's text field.
+/// opened, and paste `text` into it.
+///
+/// The paste goes through the clipboard, so we save whatever text the user
+/// had there and put it back afterwards (only if the clipboard still holds
+/// our text, so we never clobber something they copied in the meantime).
+/// Non-text clipboard contents (images, files) can't be read back and are
+/// replaced, as before.
 ///
 /// On macOS, the Accessory activation policy means `window.hide()` alone does
 /// not deactivate us, and even `[NSApp hide:]` does not reliably re-focus the
 /// *specific* app the user was typing into. So we explicitly reactivate the
-/// PID captured in `capture_prev_focus()` and then synthesize the paste.
+/// PID captured in `capture_prev_focus()` and wait until it is frontmost
+/// before synthesizing the paste.
 #[tauri::command]
-fn hide_and_paste(app: tauri::AppHandle) {
+fn hide_and_paste(app: tauri::AppHandle, text: Option<String>) {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+
     #[cfg(target_os = "macos")]
     let prev_pid = PREV_APP_PID.swap(0, Ordering::SeqCst);
+
+    // Older frontends wrote the clipboard themselves and pass no text.
+    let saved = text.as_ref().map(|t| {
+        let previous = app.clipboard().read_text().ok();
+        let _ = app.clipboard().write_text(t.clone());
+        previous
+    });
 
     // AppKit (NSWindow ops, NSRunningApplication.activateWithOptions) must
     // run on the main thread. Tauri command handlers run on a worker thread,
@@ -770,20 +797,71 @@ fn hide_and_paste(app: tauri::AppHandle) {
         }
     });
 
-    // The keystroke synthesis itself uses CGEventPost (via enigo), which is
-    // thread-safe, so we sleep + send from a background thread to avoid
-    // blocking the main thread / IPC reply.
+    // Keystroke synthesis is thread-safe, so wait + send from a background
+    // thread to avoid blocking the main thread / IPC reply.
     thread::spawn(move || {
-        // Give AppKit time to actually make the target app key/active before
-        // we synthesize the paste.
         #[cfg(target_os = "macos")]
-        thread::sleep(Duration::from_millis(160));
+        wait_for_focus_change(&app, prev_pid);
         #[cfg(not(target_os = "macos"))]
-        thread::sleep(Duration::from_millis(80));
+        wait_for_focus_change(&app);
 
         send_paste_keystroke();
-        let _ = app;
+
+        // Give the target app time to read the clipboard before restoring it.
+        if let (Some(ours), Some(Some(previous))) = (text, saved) {
+            thread::sleep(Duration::from_millis(PASTE_READ_GRACE_MS));
+            if app.clipboard().read_text().ok().as_deref() == Some(ours.as_str()) {
+                let _ = app.clipboard().write_text(previous);
+            }
+        }
     });
+}
+
+/// How long the target app gets to read the clipboard after Cmd/Ctrl+V.
+const PASTE_READ_GRACE_MS: u64 = 600;
+const FOCUS_POLL_MS: u64 = 15;
+const FOCUS_TIMEOUT_MS: u64 = 750;
+
+/// Run `f` on the main thread and wait for its result.
+#[cfg(target_os = "macos")]
+fn on_main<T: Send + 'static>(app: &tauri::AppHandle, f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || { let _ = tx.send(f()); }).ok()?;
+    rx.recv_timeout(Duration::from_millis(200)).ok()
+}
+
+/// Wait until the app we're pasting into is frontmost, instead of guessing
+/// with a fixed delay. Falls back to pasting after a timeout so a slow
+/// activation never loses the paste entirely.
+#[cfg(target_os = "macos")]
+fn wait_for_focus_change(app: &tauri::AppHandle, prev_pid: i32) {
+    let own = std::process::id() as i32;
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_millis(FOCUS_TIMEOUT_MS) {
+        let front = on_main(app, mac_focus::frontmost_pid).unwrap_or(0);
+        let ready = if prev_pid > 0 { front == prev_pid } else { front > 0 && front != own };
+        if ready { break; }
+        thread::sleep(Duration::from_millis(FOCUS_POLL_MS));
+    }
+    // The app is frontmost; give its key window a moment to take focus.
+    thread::sleep(Duration::from_millis(60));
+}
+
+#[cfg(not(target_os = "macos"))]
+fn wait_for_focus_change(app: &tauri::AppHandle) {
+    let start = std::time::Instant::now();
+    // Never paste sooner than before (80ms), and stop waiting once the
+    // overlay has really lost focus.
+    thread::sleep(Duration::from_millis(80));
+    while start.elapsed() < Duration::from_millis(FOCUS_TIMEOUT_MS) {
+        let focused = app
+            .get_webview_window("overlay")
+            .and_then(|w| w.is_focused().ok())
+            .unwrap_or(false);
+        if !focused { break; }
+        thread::sleep(Duration::from_millis(FOCUS_POLL_MS));
+    }
+    thread::sleep(Duration::from_millis(30));
 }
 
 // ── Window position persistence ───────────────────────────────────────────────

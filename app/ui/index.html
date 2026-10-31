@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="ltr" data-theme="dark">
+<html lang="en" dir="ltr" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -262,6 +262,12 @@
     #content ::-webkit-scrollbar-thumb { width: 0; height: 0; background: transparent; }
     #content * { scrollbar-width: none; }
     ::selection { background: var(--accent-translucent); }
+    /* Visible focus for keyboard users (mouse clicks don't show it). */
+    button:focus-visible, [role="switch"]:focus-visible, [role="button"]:focus-visible,
+    .theme-option:focus-visible, .settings-nav-btn:focus-visible {
+      outline: 2px solid var(--accent) !important;
+      outline-offset: 2px;
+    }
 
     /* Scrollbars are hidden, so fade the edge that has more content past it. */
     [data-fade="top"] {
@@ -1555,10 +1561,10 @@
   </style>
 </head>
 <body>
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- Letter picker (Cmd+G) — anchored to the suggestions panel; populated by JS -->
-  <div class="letter-picker hidden" id="letter-picker" role="listbox" aria-label="Letter alternatives"></div>
+  <div class="letter-picker hidden" id="letter-picker" role="listbox" aria-label="Letter alternatives" lang="ar"></div>
 
   <!-- Hover tip explaining Cmd+G -->
   <div class="cmdg-tip" id="cmdg-tip" role="tooltip"></div>
@@ -1576,7 +1582,7 @@
     </div>
   </div>
 
-  <div class="update-banner" id="update-banner">
+  <div class="update-banner" id="update-banner" role="status" aria-live="polite">
     <div class="update-banner-text" id="update-banner-text">
       <div class="ub-title">Update available</div>
       <div class="ub-sub" id="update-banner-sub"></div>
@@ -1598,7 +1604,7 @@
       </div>
       <div class="cp-bottom">
         <div class="cp-preview" id="cp-preview"></div>
-        <input class="cp-hex-input" id="cp-hex-input" type="text" maxlength="7" spellcheck="false" autocomplete="off">
+        <input class="cp-hex-input" id="cp-hex-input" aria-label="Hex colour" type="text" maxlength="7" spellcheck="false" autocomplete="off">
       </div>
       <div class="cp-recent hidden" id="cp-recent">
         <div class="cp-recent-label">Recent</div>
@@ -1612,7 +1618,7 @@
     <div class="header" data-tauri-drag-region>
       <!-- Normal mode: logo + input + settings -->
       <div class="header-input-area" id="header-input-area">
-        <div class="logo">
+        <div class="logo" aria-hidden="true">
           <svg width="180" height="136" viewBox="0 0 180 136" xmlns="http://www.w3.org/2000/svg">
             <g transform="translate(-884.184,-650.24)">
               <g transform="matrix(0.764,0,0,1,309.843,252.667)">
@@ -1631,19 +1637,19 @@
           </svg>
         </div>
         <div class="input-wrapper">
-          <input type="text" id="arabizi-input" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" writingsuggestions="false">
+          <input type="text" id="arabizi-input" role="combobox" aria-label="Type Franco Arabic" aria-autocomplete="list" aria-controls="suggestion-list" aria-expanded="false" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off" writingsuggestions="false">
           <div class="input-hint" id="input-hint">
             <span class="hint-text">Try typing in franco, something like</span>
             <span class="hint-example" id="hint-example">ahlan wa sahlan</span>
           </div>
         </div>
-        <button class="settings-btn" id="settings-btn" title="Settings">
+        <button class="settings-btn" id="settings-btn" title="Settings" aria-label="Settings">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>
         </button>
       </div>
       <!-- Settings mode: back button + title -->
       <div class="settings-header-bar hidden" id="settings-header-bar">
-        <button class="back-btn" id="back-btn">
+        <button class="back-btn" id="back-btn" aria-label="Back">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z"/></svg>
         </button>
         <span class="settings-header-title">Settings</span>
@@ -1655,25 +1661,25 @@
       <!-- Landing: Tips -->
       <div class="panel tips-panel" id="tips-panel">
         <div class="mapping-section-label">Quick start</div>
-        <div class="starter-grid" id="starter-grid"></div>
+        <div class="starter-grid" id="starter-grid" role="listbox" aria-label="Quick start phrases" lang="ar"></div>
       </div>
 
       <!-- Typing: Suggestions + Preview -->
       <div class="typing-panels hidden" id="typing-panels">
         <div class="panel suggestions-panel">
           <div class="panel-label">Suggestions</div>
-          <div class="suggestion-list" id="suggestion-list"></div>
+          <div class="suggestion-list" id="suggestion-list" role="listbox" aria-label="Suggestions" lang="ar"></div>
         </div>
         <div class="panel preview-panel">
           <div class="panel-label">Preview</div>
-          <div class="preview-text" id="preview-text"></div>
+          <div class="preview-text" id="preview-text" role="region" aria-label="Preview" lang="ar"></div>
         </div>
       </div>
 
       <!-- Settings -->
       <div class="panel settings-panel hidden" id="settings-panel">
         <!-- Sidebar nav -->
-        <nav class="settings-nav">
+        <nav class="settings-nav" aria-label="Settings sections">
           <button class="settings-nav-btn active" data-page="appearance">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M200.77,53.89A103.27,103.27,0,0,0,128,24h-1.07A104,104,0,0,0,24,128c0,43,26.58,79.06,69.36,94.17A32,32,0,0,0,136,192a16,16,0,0,1,16-16h46.21a31.81,31.81,0,0,0,31.2-24.88,104.43,104.43,0,0,0,2.59-24A103.28,103.28,0,0,0,200.77,53.89Zm13,93.71A15.89,15.89,0,0,1,198.21,160H152a32,32,0,0,0-32,32,16,16,0,0,1-21.31,15.07C62.49,194.3,40,164,40,128a88,88,0,0,1,87.09-88h.9a88.35,88.35,0,0,1,88,87.25A88.86,88.86,0,0,1,213.81,147.6ZM140,76a12,12,0,1,1-12-12A12,12,0,0,1,140,76ZM96,100A12,12,0,1,1,84,88,12,12,0,0,1,96,100Zm0,56a12,12,0,1,1-12-12A12,12,0,0,1,96,156Zm88-56a12,12,0,1,1-12-12A12,12,0,0,1,184,100Z"/></svg>
             <span>Appearance</span>
@@ -1699,13 +1705,13 @@
               <div class="settings-section-label">Accent</div>
               <div class="accent-swatches" id="accent-swatches">
                 <button class="accent-auto-btn" id="accent-auto-btn" title="Use Windows system accent">System</button>
-                <div class="accent-swatch" data-color="#E6A734" style="background:#E6A734"></div>
-                <div class="accent-swatch" data-color="#7CCB74" style="background:#7CCB74"></div>
-                <div class="accent-swatch" data-color="#00CED0" style="background:#00CED0"></div>
-                <div class="accent-swatch" data-color="#8BAEFF" style="background:#8BAEFF"></div>
-                <div class="accent-swatch" data-color="#F28DCE" style="background:#F28DCE"></div>
-                <div class="accent-swatch" data-color="#FF8C91" style="background:#FF8C91"></div>
-                <button class="accent-swatch-custom" id="accent-swatch-custom" title="Custom color">
+                <div class="accent-swatch" data-color="#E6A734" style="background:#E6A734" role="button" tabindex="0" aria-label="Amber accent"></div>
+                <div class="accent-swatch" data-color="#7CCB74" style="background:#7CCB74" role="button" tabindex="0" aria-label="Green accent"></div>
+                <div class="accent-swatch" data-color="#00CED0" style="background:#00CED0" role="button" tabindex="0" aria-label="Teal accent"></div>
+                <div class="accent-swatch" data-color="#8BAEFF" style="background:#8BAEFF" role="button" tabindex="0" aria-label="Blue accent"></div>
+                <div class="accent-swatch" data-color="#F28DCE" style="background:#F28DCE" role="button" tabindex="0" aria-label="Pink accent"></div>
+                <div class="accent-swatch" data-color="#FF8C91" style="background:#FF8C91" role="button" tabindex="0" aria-label="Coral accent"></div>
+                <button class="accent-swatch-custom" id="accent-swatch-custom" title="Custom color" aria-label="Custom color">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
                 </button>
               </div>
@@ -1742,7 +1748,7 @@
             <div class="settings-subsec">
               <div class="toggle-row">
                 <span class="toggle-label">Compact mode</span>
-                <div class="toggle" id="compact-toggle"></div>
+                <div class="toggle" id="compact-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Compact mode"></div>
               </div>
             </div>
           </div>
@@ -1758,7 +1764,7 @@
             <div class="settings-subsec">
               <div class="toggle-row">
                 <span class="toggle-label">Run on startup</span>
-                <div class="toggle" id="startup-toggle"></div>
+                <div class="toggle" id="startup-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Run on startup"></div>
               </div>
             </div>
             <div class="settings-subsec">
@@ -1787,19 +1793,19 @@
             <div class="settings-subsec">
               <div class="toggle-row">
                 <span class="toggle-label">Larger text</span>
-                <div class="toggle" id="large-text-toggle"></div>
+                <div class="toggle" id="large-text-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Larger text"></div>
               </div>
             </div>
             <div class="settings-subsec">
               <div class="toggle-row">
                 <span class="toggle-label">High contrast</span>
-                <div class="toggle" id="high-contrast-toggle"></div>
+                <div class="toggle" id="high-contrast-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="High contrast"></div>
               </div>
             </div>
             <div class="settings-subsec">
               <div class="toggle-row">
                 <span class="toggle-label">Dyslexia font</span>
-                <div class="toggle" id="dyslexia-font-toggle"></div>
+                <div class="toggle" id="dyslexia-font-toggle" role="switch" tabindex="0" aria-checked="false" aria-label="Dyslexia font"></div>
               </div>
             </div>
           </div>
@@ -1840,8 +1846,8 @@
       <div class="shortcuts">
         <div class="shortcut">
           <div class="shortcut-keys">
-            <kbd><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-647L256-544l-56-56 280-280 280 280-56 57-184-184v647h-80Z"/></svg></kbd>
-            <kbd><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-880v647L256-416l-56 56 280 280 280-280-56-57-184 184v-647h-80Z"/></svg></kbd>
+            <kbd aria-label="Up arrow"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-80v-647L256-544l-56-56 280-280 280 280-56 57-184-184v647h-80Z"/></svg></kbd>
+            <kbd aria-label="Down arrow"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M440-880v647L256-416l-56 56 280 280 280-280-56-57-184 184v-647h-80Z"/></svg></kbd>
           </div>
           <span class="shortcut-label">Select Word</span>
         </div>
@@ -1854,7 +1860,7 @@
           <span class="shortcut-label">Skip</span>
         </div>
         <div class="shortcut">
-          <kbd><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M360-240 120-480l240-240 56 56-144 144h488v-160h80v240H272l144 144-56 56Z"/></svg></kbd>
+          <kbd aria-label="Enter"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" fill="currentColor"><path d="M360-240 120-480l240-240 56 56-144 144h488v-160h80v240H272l144 144-56 56Z"/></svg></kbd>
           <span class="shortcut-label">Paste</span>
         </div>
       </div>
@@ -1869,7 +1875,6 @@
 
   <script>
     const { invoke } = window.__TAURI__.core;
-    const { writeText } = window.__TAURI__.clipboardManager;
     const { getCurrentWindow, LogicalSize } = window.__TAURI__.window;
 
     // DOM refs
@@ -2348,6 +2353,28 @@
 
     settingsNavBtns.forEach(btn => btn.addEventListener('click', () => switchSettingsPage(btn.dataset.page)));
 
+    // ── Accessibility state ──
+    // Controls show state with classes; mirror it into ARIA so screen readers
+    // hear it, and let switches/swatches work from the keyboard.
+    function syncAriaState(el) {
+      const on = el.classList.contains('on') || el.classList.contains('active');
+      if (el.getAttribute('role') === 'switch') el.setAttribute('aria-checked', String(on));
+      else if (el.classList.contains('settings-nav-btn')) {
+        if (on) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
+      } else el.setAttribute('aria-pressed', String(on));
+    }
+    const ariaStateSelector = '[role="switch"], .accent-swatch, .accent-auto-btn, .accent-swatch-custom, .theme-option, .settings-nav-btn';
+    document.querySelectorAll(ariaStateSelector).forEach(syncAriaState);
+    new MutationObserver(records => {
+      for (const r of records) if (r.target.matches && r.target.matches(ariaStateSelector)) syncAriaState(r.target);
+    }).observe(settingsPanel, { attributes: true, attributeFilter: ['class'], subtree: true });
+    settingsPanel.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="switch"], .accent-swatch[role="button"]')) {
+        e.preventDefault();
+        e.target.click();
+      }
+    });
+
     // ── Scroll fades ──
     function updateScrollFade(el) {
       const top = el.scrollTop > 1;
@@ -2642,15 +2669,21 @@
         : await invoke('transliterate', { input: currentInput });
       if (isStale()) return;
       if (result.words.length > 0) {
-        if (editingWordIdx < 0 && result.words.length > 1) {
+        if (result.words.length > 1) {
           const done = result.words.length - 1;
-          while (result.words.length > 1) {
-            const w = result.words.shift();
-            committedWords.push({
-              input: w.input,
-              arabic: w.candidates[0] || '',
-              candidates: w.candidates,
-            });
+          const finished = result.words.splice(0, done).map(w => ({
+            input: w.input,
+            arabic: w.candidates[0] || '',
+            candidates: w.candidates,
+            emojis: w.emojis || [],
+          }));
+          if (editingWordIdx >= 0) {
+            // Editing a word mid-sentence: the finished words go in front of
+            // it, and the last word keeps replacing the one being edited.
+            committedWords.splice(editingWordIdx, 0, ...finished);
+            editingWordIdx += finished.length;
+          } else {
+            committedWords.push(...finished);
           }
           // Drop the committed words from the box so the next keystroke
           // doesn't commit them again.
@@ -3198,12 +3231,9 @@
 
     async function commitAll() {
       const text = committedWords.map(w => w.arabic).join(' ');
-      await writeText(text);
-      // hide_and_paste hides the overlay AND restores focus to the
-      // previously-active app on macOS (NSApp.hide:), then sends Cmd+V.
-      // Using window.hide() alone leaves us as the active Accessory app
-      // and the simulated keystroke is delivered to nothing.
-      await invoke('hide_and_paste');
+      // hide_and_paste writes the clipboard, hides the overlay, returns focus
+      // to the previous app, pastes, then restores the user's clipboard.
+      await invoke('hide_and_paste', { text });
     }
 
     // ── Rendering ──
@@ -3246,10 +3276,10 @@
 
     function renderStarters() {
       if (!starterGrid) return;
-      const kbdHtml = '<span class="starter-chip-kbd"><kbd>↵</kbd>paste<span class="sep">·</span><kbd>Tab</kbd>new</span>';
+      const kbdHtml = '<span class="starter-chip-kbd" aria-hidden="true"><kbd>↵</kbd>paste<span class="sep">·</span><kbd>Tab</kbd>new</span>';
       starterGrid.innerHTML = starters.map((s, i) => {
         const sel = i === selectedStarterIdx ? 'selected' : '';
-        return `<div class="starter-chip ${sel}" data-idx="${i}" role="button" tabindex="-1">${kbdHtml}<span class="starter-ar"></span></div>`;
+        return `<div class="starter-chip ${sel}" data-idx="${i}" id="starter-opt-${i}" role="option" aria-selected="${!!sel}" tabindex="-1">${kbdHtml}<span class="starter-ar"></span></div>`;
       }).join('');
       starterGrid.querySelectorAll('.starter-chip').forEach((chip) => {
         const idx = parseInt(chip.dataset.idx, 10);
@@ -3276,8 +3306,7 @@
     async function pasteStarter(idx) {
       const s = starters[idx];
       if (!s) return;
-      await writeText(s.ar);
-      await invoke('hide_and_paste');
+      await invoke('hide_and_paste', { text: s.ar });
     }
 
     function seedStarter(idx) {
@@ -3330,11 +3359,13 @@
     function renderSuggestions() {
       if (currentCandidates.length === 0 && currentEmojis.length === 0) {
         suggestionList.innerHTML = '';
+        inputEl.setAttribute('aria-expanded', 'false');
+        inputEl.removeAttribute('aria-activedescendant');
         return;
       }
       const emojiHtml = currentEmojis.length > 0
         ? `<div class="emoji-row">${currentEmojis.map((e, i) => `
-            <div class="emoji-item ${emojiMode && i === selectedEmojiIdx ? 'selected' : ''}" onclick="pickEmoji(${i})">${e}</div>
+            <div class="emoji-item ${emojiMode && i === selectedEmojiIdx ? 'selected' : ''}" id="emoji-opt-${i}" role="option" aria-selected="${emojiMode && i === selectedEmojiIdx}" onclick="pickEmoji(${i})">${escapeHtml(e)}</div>
           `).join('')}</div>`
         : '';
 
@@ -3342,9 +3373,9 @@
       const showLock = hasOverrides() || editingPin !== null;
       currentCandidates.forEach((c, i) => {
         const lock = (showLock && i === 0) ? lockBadgeSvg : '';
-        html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" onclick="pickCandidate(${i})" ondblclick="confirmCandidate(${i})">
+        html += `<div class="suggestion ${!emojiMode && i === selectedIdx ? 'selected' : ''}" id="sugg-opt-${i}" role="option" aria-selected="${!emojiMode && i === selectedIdx}" onclick="pickCandidate(${i})" ondblclick="confirmCandidate(${i})">
           ${lock}
-          <div class="ar">${c}</div>
+          <div class="ar">${escapeHtml(c)}</div>
         </div>`;
         if (i === 1) html += emojiHtml;
       });
@@ -3355,6 +3386,10 @@
       suggestionList.innerHTML = html;
       const sel = suggestionList.querySelector('.suggestion.selected, .emoji-item.selected');
       if (sel) sel.scrollIntoView({ block: 'nearest' });
+      // Screen readers announce the highlighted suggestion as you arrow.
+      inputEl.setAttribute('aria-expanded', 'true');
+      if (sel) inputEl.setAttribute('aria-activedescendant', sel.id);
+      else inputEl.removeAttribute('aria-activedescendant');
     }
 
     window.pickEmoji = function(idx) {
@@ -4150,6 +4185,10 @@
       const statusEl     = document.getElementById('update-status');
 
       const hideBanner = () => banner.classList.remove('show');
+      // Session state so periodic checks don't interrupt a download or
+      // re-nag about a version the user already put off.
+      let installing = false;
+      let dismissedVersion = null;
       // Reset banner DOM listeners by cloning — avoids stale handlers when
       // the banner is shown more than once in a session.
       const resetBanner = () => {
@@ -4172,9 +4211,10 @@
         subEl.textContent = `Version ${update.version} is available`;
         banner.classList.add('show');
 
-        later.addEventListener('click', hideBanner, { once: true });
+        later.addEventListener('click', () => { dismissedVersion = update.version; hideBanner(); }, { once: true });
 
         act.addEventListener('click', async () => {
+          installing = true;
           act.disabled = true;
           later.disabled = true;
           subEl.textContent = `Downloading v${update.version}…`;
@@ -4214,6 +4254,7 @@
               } catch (e) { /* ignore */ }
             };
           } catch (err) {
+            installing = false;
             progEl.classList.add('hidden');
             subEl.textContent = 'Update failed — try again later';
             act.textContent = 'Dismiss';
@@ -4237,7 +4278,13 @@
           const update = await updater.check();
           if (update && update.available) {
             if (!silent) statusEl.textContent = '';
-            presentUpdate(update);
+            // Background checks stay quiet while installing, while the banner
+            // is already up, or for a version the user chose "Later" on.
+            if (installing) {
+              if (!silent) statusEl.textContent = 'Update is installing…';
+            } else if (!silent || (!banner.classList.contains('show') && update.version !== dismissedVersion)) {
+              presentUpdate(update);
+            }
           } else {
             if (!silent) statusEl.textContent = "You're up to date";
           }
@@ -4269,8 +4316,10 @@
         });
       }
 
-      // Auto-check on launch, silently.
+      // Auto-check on launch, then every 6 hours: the app lives in the tray
+      // and can go weeks without relaunching.
       runUpdateCheck(true);
+      setInterval(() => runUpdateCheck(true), 6 * 60 * 60 * 1000);
     })();
   </script>
 </body>

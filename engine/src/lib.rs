@@ -4,6 +4,7 @@ mod emoji;
 mod cldr_ar;
 mod engine;
 mod frequency;
+mod lattice;
 mod tashkeela;
 mod user_prefs;
 

@@ -4,6 +4,7 @@ use crate::cldr_ar::CLDR_AR;
 use crate::dictionary::build_dictionary;
 use crate::emoji::{build_emoji_map, build_emoticon_map};
 use crate::frequency::FrequencyList;
+use crate::lattice;
 use crate::tashkeela::TashkeelaList;
 use crate::mappings::{
     is_vowel_char, AMBIGUOUS_CONSONANTS, CONSONANT_MAPPINGS, LONG_VOWEL_MAPPINGS,
@@ -11,20 +12,38 @@ use crate::mappings::{
 };
 use crate::user_prefs::UserPreferences;
 
+/// Paths kept when enumerating the candidate lattice.
+const LATTICE_BEAM: usize = 1500;
+/// Weight of the language model (log10 word count) against channel cost.
+/// Weight of the language model (log10 word count) against channel cost.
+const LM_WEIGHT: f64 = 0.7;
+/// Discount for words attested only in the (MSA-heavy) Tashkeela corpus.
+const LM_TASHKEELA_PENALTY: f64 = 2000.0;
+/// Score of a word attested in neither corpus.
+const LM_UNKNOWN: f64 = -3000.0;
+/// Penalty per clear vowel clash with a candidate's corpus vocalization
+/// (half for a soft clash), capped at two clashes.
+const VOWEL_MISMATCH_PENALTY: i64 = 1500;
+/// Discount for words attested only in the (MSA-heavy) Tashkeela corpus.
+
+/// Score of a word attested in neither corpus.
+
+/// Penalty when a candidate's corpus vocalization contradicts typed vowels.
+
+
 /// The main transliteration engine.
 ///
-/// Strategy for generating multiple candidates:
-/// 1. Dictionary lookup (highest quality, may return multiple)
-/// 2. Primary rule-based transliteration (best single guess)
-/// 3. Variations via:
-///    - Swapping ambiguous consonants (s→ص instead of س, etc.)
-///    - Including/excluding short vowels
-///    - Keeping all short vowels as standalone letters
+/// Candidate generation (see `lattice.rs`): the Latin word is split into
+/// segments, each with weighted Arabic readings — consonant swaps (s→ص),
+/// short vs. long vowels, doubled consonant → shadda, hamza seats and
+/// Egyptian 2→ق, taa marbuta / alef / alef maqsura / ه endings, tanween.
+/// The cheapest combinations are enumerated, plus dictionary entries.
 ///
-/// Candidates are then ranked by:
+/// Ranking (noisy channel):
 /// 1. User preference (previously selected candidates for this input)
-/// 2. Dictionary match bonus
-/// 3. Arabic word frequency (common real words rank higher)
+/// 2. Curated dictionary entries
+/// 3. log-frequency (OpenSubtitles, Tashkeela fallback) − channel cost −
+///    vowel-agreement penalty against the corpus vocalization
 pub struct TransliterationEngine {
     dictionary: HashMap<String, Vec<String>>,
     emoji_map: HashMap<String, Vec<&'static str>>,
@@ -446,38 +465,6 @@ impl TransliterationEngine {
         result
     }
 
-    /// Shared scan used by `generate_consonant_swaps` and the override path.
-    fn scan_ambiguous(&self, word: &str) -> Vec<(usize, &'static str, &'static [&'static str])> {
-        let chars: Vec<char> = word.chars().collect();
-        let len = chars.len();
-        let mut out = Vec::new();
-        let mut pos = 0;
-        while pos < len {
-            if chars[pos] == '-' {
-                pos += 1;
-                continue;
-            }
-            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
-            let remaining: String = chars[pos..].iter().collect();
-            let max_len = if has_separator { 1 } else { usize::MAX };
-            if let Some((pattern, _primary, alternatives)) =
-                Self::match_ambiguous_max(&remaining, max_len)
-            {
-                out.push((pos, pattern, alternatives));
-                pos += pattern.len();
-            } else {
-                if let Some((pattern, _)) = Self::match_consonant_max(&remaining, max_len) {
-                    pos += pattern.len();
-                } else if let Some((pattern, _)) = Self::match_long_vowel(&remaining) {
-                    pos += pattern.len();
-                } else {
-                    pos += 1;
-                }
-            }
-        }
-        out
-    }
-
     /// Convert a string of ASCII digits (with optional `.` / `,`) to Arabic-Indic
     /// digits. Returns `None` if the token contains any non-digit / non-punct
     /// char, or if it's a single bare digit (which in Arabizi usually stands
@@ -522,97 +509,57 @@ impl TransliterationEngine {
             return vec![indic];
         }
 
-        let mut candidates = Vec::new();
-        let is_dict_word = self.dictionary.contains_key(&word);
+        // (candidate, channel cost). Cost 0 = canonical reading of the Latin.
+        let mut candidates: Vec<(String, i32)> = Vec::new();
+        let mut index: HashMap<String, usize> = HashMap::new();
+        let mut push = |s: String, cost: i32| match index.get(&s) {
+            Some(&i) => candidates[i].1 = candidates[i].1.min(cost),
+            None => {
+                index.insert(s.clone(), candidates.len());
+                candidates.push((s, cost));
+            }
+        };
 
-        // 1. Dictionary entries first
+        // 1. Dictionary entries (curated, always win the ranking).
         if let Some(dict_entries) = self.dictionary.get(&word) {
-            candidates.extend(dict_entries.clone());
-        }
-
-        // 2. Primary rule-based (drop short vowels between consonants)
-        let primary = self.rule_based_transliterate(&word, VowelMode::DropMiddle);
-        if !candidates.contains(&primary) {
-            candidates.push(primary);
-        }
-
-        // 3. Variation: keep ALL vowels as standalone letters
-        let all_vowels = self.rule_based_transliterate(&word, VowelMode::KeepAll);
-        if !candidates.contains(&all_vowels) {
-            candidates.push(all_vowels);
-        }
-
-        // 4. Variation: drop ALL short vowels
-        let no_vowels = self.rule_based_transliterate(&word, VowelMode::DropAll);
-        if !candidates.contains(&no_vowels) {
-            candidates.push(no_vowels);
-        }
-
-        // 5. Consonant swap variations — try swapping each ambiguous consonant.
-        // Must run BEFORE tanween/alef-layyina so those variations apply to
-        // swap-derived forms too (otherwise "tb3n" generates طبعن but never
-        // طبعاً, and ranking can't surface the right answer).
-        let swaps = self.generate_consonant_swaps(&word);
-        for swap in swaps {
-            if !candidates.contains(&swap) {
-                candidates.push(swap);
+            for entry in dict_entries {
+                push(entry.clone(), 0);
             }
         }
 
-        // 5b. A final Latin `a`/`e` is genuinely ambiguous: it is often taa
-        // marbuta (ة), but can also be a written alef (ا). Generate both and
-        // let the frequency data decide (e.g. `hatha` -> هذا, while
-        // `gameela` still prefers جميلة).
-        let terminal_alef = Self::generate_terminal_alef_variants(&word, &candidates);
-        for variant in terminal_alef {
-            if !candidates.contains(&variant) {
-                candidates.push(variant);
-            }
+        // 2. Weighted lattice: every combination of per-segment readings
+        // (consonant swaps, short/long vowels, shadda, hamza seats, taa
+        // marbuta / alef / alef maqsura endings, tanween), cheapest first.
+        let segments = lattice::build(&word);
+        // Very long tokens (pasted text, URLs) get a narrower beam so the
+        // search stays well under a millisecond-scale budget.
+        let beam = if segments.len() > 14 { LATTICE_BEAM / 5 } else { LATTICE_BEAM };
+        for (s, cost) in lattice::enumerate(&segments, beam) {
+            push(s, cost);
         }
 
-        // 6. Tanween variations — "an" ending often means tanween fatha (اً)
-        // not literal ان. Applied to every consonant variant generated above.
-        let tanween = Self::generate_tanween_variants(&candidates);
-        for t in tanween {
-            if !candidates.contains(&t) {
-                candidates.push(t);
-            }
-        }
-
-        // 6b. Alef layyina variants — word-final ا could be ى (e.g. تعالا → تعالى)
-        let alef_layyina = Self::generate_alef_layyina_variants(&candidates);
-        for v in alef_layyina {
-            if !candidates.contains(&v) {
-                candidates.push(v);
-            }
-        }
-
-        // 6b. Inject any previously-confirmed candidates the user has selected
+        // 3. Inject any previously-confirmed candidates the user has selected
         // for this input. These wouldn't otherwise be generated when they
-        // require multi-letter combinations the auto-swap step never emits
+        // require multi-letter combinations the lattice never emits
         // (e.g. picker-derived "بالظبط" from "baalzbt").
         if let Some(prefs) = prefs {
             for known in prefs.known_candidates(&word) {
-                if !candidates.contains(&known) {
-                    candidates.push(known);
-                }
+                push(known, 0);
             }
         }
 
-        // 7. Rank candidates by: user prefs > dictionary > frequency > unknown
-        self.rank_candidates(&word, &mut candidates, is_dict_word, prefs);
+        // 4. Rank: user prefs > dictionary > language model − channel cost.
+        self.rank_candidates(&word, &mut candidates, prefs);
 
-        // Cap at 8 candidates
-        candidates.truncate(8);
-        candidates
+        candidates.into_iter().take(8).map(|(s, _)| s).collect()
     }
 
-    /// Rank candidates using user preferences, dictionary presence, and word frequency.
+    /// Rank candidates using user preferences, dictionary presence, word
+    /// frequency and the lattice's channel cost.
     fn rank_candidates(
         &self,
         input: &str,
-        candidates: &mut Vec<String>,
-        is_dict_word: bool,
+        candidates: &mut Vec<(String, i32)>,
         prefs: Option<&UserPreferences>,
     ) {
         let dict_entries: Vec<String> = self.dictionary
@@ -620,12 +567,15 @@ impl TransliterationEngine {
             .cloned()
             .unwrap_or_default();
 
-        candidates.sort_by(|a, b| {
-            let score_a = self.candidate_score(input, a, is_dict_word, &dict_entries, prefs);
-            let score_b = self.candidate_score(input, b, is_dict_word, &dict_entries, prefs);
-            // Higher score = better, so reverse order
-            score_b.cmp(&score_a)
-        });
+        let mut scored: Vec<(i64, i32, usize)> = candidates
+            .iter()
+            .enumerate()
+            .map(|(i, (c, cost))| (self.candidate_score(input, c, *cost, &dict_entries, prefs), *cost, i))
+            .collect();
+        // Higher score first; ties → cheaper reading → generation order.
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+        let old = std::mem::take(candidates);
+        *candidates = scored.into_iter().map(|(_, _, i)| old[i].clone()).collect();
     }
 
     /// Score a candidate. Higher = better.
@@ -633,384 +583,180 @@ impl TransliterationEngine {
         &self,
         input: &str,
         candidate: &str,
-        _is_dict_word: bool,
+        cost: i32,
         dict_entries: &[String],
         prefs: Option<&UserPreferences>,
-    ) -> u64 {
-        let mut score: u64 = 0;
+    ) -> i64 {
+        let mut score: i64 = 0;
 
-        // User preference: 1M points per selection count (strongest signal)
+        // User preference: strongest signal, per selection count.
         if let Some(prefs) = prefs {
-            let user_score = prefs.score(input, candidate);
-            score += user_score as u64 * 1_000_000;
+            score += prefs.score(input, candidate) as i64 * 1_000_000_000;
         }
 
-        // Dictionary match: 100k bonus (curated entries are high quality)
-        if dict_entries.contains(&candidate.to_string()) {
-            score += 100_000;
-            // First dict entry gets extra bonus (it's the preferred form)
-            if dict_entries.first().map(|s| s.as_str()) == Some(candidate) {
-                score += 50_000;
-            }
+        // Dictionary match: curated entries outrank anything generated.
+        if let Some(idx) = dict_entries.iter().position(|d| d == candidate) {
+            score += 100_000_000;
+            // Earlier entries are the preferred forms.
+            score += 50_000_000 / (idx as i64 + 1);
         }
 
-        // Frequency list: up to 300k points (real words beat gibberish)
-        // Words with individual Arabic tokens all in the frequency list score well.
-        // For single-word candidates, check directly.
-        // Score inversely proportional to rank (rank 0 = most common = highest score).
-        //
-        // Both lookup tables key on bare (unvocalized) forms — OpenSubtitles is
-        // already stripped, Tashkeela is indexed by stripped base. Candidates
-        // we generate carry tanween (e.g. طبعاً), so we must strip before
-        // looking up or every tanween candidate misses the frequency signal
-        // and falls back to insertion order. That bug caused "tb3n" → تبعاً
-        // (rare) to outrank طبعاً (top-100 word).
-        let words_owned: Vec<String> = candidate
-            .split_whitespace()
-            .map(strip_tashkeel)
-            .collect();
-        let words: Vec<&str> = words_owned.iter().map(|s| s.as_str()).collect();
-        let mut freq_score: u64 = 0;
-        let mut all_found = true;
-        for w in &words {
-            if let Some(rank) = self.frequency.rank(w) {
-                // Inverse rank: lower rank = higher score
-                freq_score += 300_000u64.saturating_sub(rank as u64);
-            } else {
-                all_found = false;
-            }
-        }
-        if all_found && !words.is_empty() {
-            score += freq_score / words.len() as u64;
-        }
-
-        // Tashkeela corpus: tashkeel-aware MSA/classical signal. The corpus
-        // covers vocabulary the OpenSubtitles list misses (classical / formal)
-        // and acts as a tiebreaker between rule-generated variants. Scaled
-        // smaller than the OpenSubtitles signal because Tashkeela is
-        // MSA-heavy and would otherwise outrank dialectal real forms.
-        let mut tashkeela_score: u64 = 0;
-        let mut all_tashkeela = true;
-        for w in &words {
-            if let Some(rank) = self.tashkeela.rank(w) {
-                tashkeela_score += 150_000u64.saturating_sub((rank as u64).min(150_000));
-            } else {
-                all_tashkeela = false;
-            }
-        }
-        if all_tashkeela && !words.is_empty() {
-            score += tashkeela_score / words.len() as u64;
-        }
-
-        score
+        score + self.lm_score(candidate) - cost as i64 - self.vowel_penalty(input, candidate)
     }
 
-    /// Generate tanween fatha variants for candidates ending in ان.
-    /// In Arabic, words ending in "-an" in Arabizi often represent tanween fatha (ً)
-    /// rather than a literal alef-noon. E.g. "sahlan" → سهلاً not just سهلان.
-    fn generate_tanween_variants(candidates: &[String]) -> Vec<String> {
-        let mut variants = Vec::new();
-        for candidate in candidates {
-            if candidate.ends_with("ان") {
-                let base = &candidate[..candidate.len() - "ان".len()];
-                variants.push(format!("{}اً", base));
-            } else if candidate.ends_with("ن") && !candidate.ends_with("ان") {
-                // Cases where vowel was dropped: e.g. سهلن → سهلاً
-                let base = &candidate[..candidate.len() - "ن".len()];
-                variants.push(format!("{}اً", base));
-            }
-        }
-        variants
-    }
-
-    /// Generate alef layyina (ى) variants for candidates ending in ا.
-    /// In Arabic, many words use ى (alef layyina) at word end instead of ا —
-    /// e.g. تعالى, إلى, على, هدى. Since both sound identical in Arabizi,
-    /// this generates the ى form as an alternative ranked by the frequency list.
-    fn generate_alef_layyina_variants(candidates: &[String]) -> Vec<String> {
-        let alef = 'ا';
-        let alef_len = alef.len_utf8();
-        let mut variants = Vec::new();
-        for candidate in candidates {
-            if candidate.ends_with(alef) && candidate.chars().count() > 1 {
-                let base = &candidate[..candidate.len() - alef_len];
-                variants.push(format!("{}ى", base));
-            }
-        }
-        variants
-    }
-
-    /// Generate written-alef alternatives for candidates where a final Latin
-    /// `a` or `e` was interpreted as taa marbuta. Alef-layyina alternatives are
-    /// derived from these in the following generation step.
-    fn generate_terminal_alef_variants(input: &str, candidates: &[String]) -> Vec<String> {
-        if !matches!(input.chars().last(), Some('a' | 'e')) {
-            return Vec::new();
-        }
-
-        let taa_marbuta = 'ة';
-        let taa_len = taa_marbuta.len_utf8();
-        candidates
-            .iter()
-            .filter_map(|candidate| {
-                candidate.strip_suffix(taa_marbuta)
-                    .map(|base| {
-                        let mut variant = String::with_capacity(
-                            candidate.len() - taa_len + 'ا'.len_utf8(),
-                        );
-                        variant.push_str(base);
-                        variant.push('ا');
-                        variant
-                    })
-            })
-            .collect()
-    }
-
-    /// Generate variations by swapping ambiguous consonants.
-    /// Uses a substitution map to override specific positions, keeping full-word context
-    /// intact (so taa marbuta and other context-sensitive rules work correctly).
+    /// Penalty when the corpus vocalization of `candidate` contradicts the
+    /// vowels the user typed. Frequent MSA words otherwise steal the top slot
+    /// from the intended word with different vowels: `3amel` (عَامِل) losing
+    /// to عَمَل, `katab` (كَتَب) to كِتَاب, `el2amar` (القَمَر) to الأَمْر.
     ///
-    /// Two strategies:
-    /// 1. Swap one instance at a time (e.g. لذيز for "lazeez")
-    /// 2. Swap ALL instances of the same pattern at once (e.g. لذيذ for "lazeez")
-    fn generate_consonant_swaps(&self, word: &str) -> Vec<String> {
-        let mut results = Vec::new();
+    /// Compares the typed vowel sequence (a / i-e / u-o, long vowels collapsed)
+    /// against the harakat of the Tashkeela form. Only contradictions count:
+    /// a differing vowel, or more typed vowels than the word has. Typing
+    /// *fewer* vowels is normal in Arabizi (`b7bk`, `ktir`) and is free.
+    /// Words without a vocalized form (most dialect words) are never penalized.
+    fn vowel_penalty(&self, input: &str, candidate: &str) -> i64 {
+        if candidate.contains(' ') {
+            return 0;
+        }
+        let Some(vocalized) = self.tashkeela.vocalized(&strip_tashkeel(candidate)) else {
+            return 0;
+        };
 
-        // Find all ambiguous positions: (position, pattern, alternatives)
-        let ambiguous_positions = self.scan_ambiguous(word);
+        let latin: Vec<char> = input.chars().filter(|c| *c != '-').collect();
+        let starts_with_vowel = latin.first().is_some_and(|c| is_vowel_char(*c));
+        let ends_with_vowel = latin.last().is_some_and(|c| is_vowel_char(*c));
 
-        // Strategy 1: Swap one at a time
-        for (i, &(_swap_pos, _pattern, alternatives)) in ambiguous_positions.iter().enumerate() {
-            for alt in alternatives {
-                let mut overrides = HashMap::new();
-                overrides.insert(i, *alt);
-                let swapped = self.transliterate_with_overrides(word, &ambiguous_positions, &overrides);
-                if !results.contains(&swapped) {
-                    results.push(swapped);
-                }
+        // Typed vowel classes; a run of vowels is one vowel (aa, ee, ou, ei…).
+        let mut typed: Vec<char> = Vec::new();
+        let mut i = 0;
+        while i < latin.len() {
+            if !is_vowel_char(latin[i]) {
+                i += 1;
+                continue;
             }
+            let start = i;
+            while i < latin.len() && is_vowel_char(latin[i]) {
+                i += 1;
+            }
+            let run: String = latin[start..i].iter().collect();
+            // a: fatha · i: kasra (also long ee/ii) · e: Egyptian e, which
+            // writes kasra *or* a reduced fatha · u: damma · y / w: diphthongs.
+            let class = match run.as_str() {
+                "ei" | "ai" | "ay" => 'y',
+                "au" | "aw" => 'w',
+                "e" => 'e',
+                r if r.starts_with('a') => 'a',
+                r if r.starts_with('e') || r.starts_with('i') => 'i',
+                _ => 'u',
+            };
+            typed.push(class);
+        }
+        if starts_with_vowel && !typed.is_empty() {
+            typed.remove(0);
         }
 
-        // Strategy 2: Swap ALL instances of the same pattern to the same alternative.
-        // E.g. "lazeez" has two "z" → swap both to ذ to get لذيذ.
-        let mut patterns_seen: Vec<&str> = Vec::new();
-        for &(_, pattern, _) in &ambiguous_positions {
-            if !patterns_seen.contains(&pattern) {
-                patterns_seen.push(pattern);
+        // Harakat per base letter of the corpus form.
+        let mut letters: Vec<(char, Option<char>)> = Vec::new();
+        for ch in vocalized.chars() {
+            let vowel = match ch {
+                '\u{064E}' | '\u{064B}' => Some('a'),
+                '\u{0650}' | '\u{064D}' => Some('i'),
+                '\u{064F}' | '\u{064C}' => Some('u'),
+                _ => None,
+            };
+            let is_mark = matches!(ch as u32, 0x064B..=0x0652 | 0x0670 | 0x0610..=0x061A);
+            if is_mark {
+                if let (Some(v), Some(last)) = (vowel, letters.last_mut()) {
+                    last.1 = Some(v);
+                }
+            } else {
+                letters.push((ch, None));
             }
         }
-
-        for target_pattern in &patterns_seen {
-            let matching_indices: Vec<usize> = ambiguous_positions
-                .iter()
-                .enumerate()
-                .filter(|(_, (_, p, _))| *p == *target_pattern)
-                .map(|(i, _)| i)
-                .collect();
-
-            if matching_indices.len() < 2 {
-                continue; // Single instance already handled in strategy 1
-            }
-
-            let alternatives = ambiguous_positions[matching_indices[0]].2;
-            for alt in alternatives {
-                let mut overrides = HashMap::new();
-                for &idx in &matching_indices {
-                    overrides.insert(idx, *alt);
-                }
-                let swapped = self.transliterate_with_overrides(word, &ambiguous_positions, &overrides);
-                if !results.contains(&swapped) {
-                    results.push(swapped);
-                }
-            }
+        if letters.is_empty() {
+            return 0;
+        }
+        // The final letter's haraka is usually a case ending nobody types —
+        // unless the Latin ends in a vowel that sits on a final consonant
+        // (`enta` → أنتَ, `howa` → هوَ).
+        let last_idx = letters.len() - 1;
+        let keep_last = ends_with_vowel && !matches!(letters[last_idx].0, 'ا' | 'ى' | 'ة');
+        if !keep_last {
+            letters[last_idx].1 = None;
+        }
+        // A typed initial vowel corresponds to the initial alef's haraka.
+        if starts_with_vowel && matches!(letters[0].0, 'ا' | 'أ' | 'إ' | 'آ') {
+            letters[0].1 = None;
+        }
+        // Fatha followed by a vowelless ي / و is a diphthong (بَيْت, يَوْم),
+        // which dialects pronounce — and Arabizi writes — as ee / oo.
+        let mut arabic: Vec<char> = Vec::new();
+        for (idx, (_, v)) in letters.iter().enumerate() {
+            let Some(v) = *v else { continue };
+            let next = letters.get(idx + 1);
+            let class = match (v, next) {
+                ('a', Some(('ي', None))) => 'Y',
+                ('a', Some(('و', None))) => 'W',
+                _ => v,
+            };
+            arabic.push(class);
         }
 
-        results
+        // Contradiction score: 1 per clear clash, ½ per soft one.
+        let clash = |t: char, a: char| -> u32 {
+            match (t, a) {
+                ('a', 'a' | 'Y' | 'W') => 0,
+                ('i', 'i' | 'Y') => 0,
+                ('e', 'i' | 'Y') => 0,
+                ('e', 'a' | 'u' | 'W') => 1,
+                ('u', 'u' | 'W') => 0,
+                ('y', 'Y' | 'i') => 0,
+                ('y', 'a') => 1,
+                ('w', 'W' | 'u') => 0,
+                ('w', 'a') => 1,
+                _ => 2,
+            }
+        };
+        let halves: u32 = if typed.len() > arabic.len() {
+            2
+        } else if typed.len() == arabic.len() {
+            typed.iter().zip(&arabic).map(|(t, a)| clash(*t, *a)).sum()
+        } else {
+            0
+        };
+        VOWEL_MISMATCH_PENALTY * halves.min(4) as i64 / 2
     }
 
-    /// Transliterate a full word but override specific ambiguous consonants.
-    /// This preserves full-word context for taa marbuta and vowel handling.
-    fn transliterate_with_overrides(
-        &self,
-        word: &str,
-        ambiguous: &[(usize, &str, &[&str])],
-        overrides: &HashMap<usize, &str>,
-    ) -> String {
-        let chars: Vec<char> = word.chars().collect();
-        let len = chars.len();
-        let mut result = String::new();
-        let mut pos = 0;
-
-        while pos < len {
-            // Check if this position is an overridden ambiguous consonant
-            let override_match = ambiguous.iter().enumerate().find(|(_, (p, _, _))| *p == pos);
-            if let Some((idx, (_, pattern, _))) = override_match {
-                if let Some(alt) = overrides.get(&idx) {
-                    result.push_str(alt);
-                    pos += pattern.len();
-                    continue;
-                }
-            }
-
-            // Context-aware hamza placement for '2'
-            if chars[pos] == '2' {
-                result.push_str(Self::resolve_hamza(&chars, pos));
-                pos += 1;
-                continue;
-            }
-
-            // Digraph separator
-            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
-            let remaining: String = chars[pos..].iter().collect();
-
-            // Consonant mappings (limited to 1 char if separator follows)
-            let max_len = if has_separator { 1 } else { usize::MAX };
-            if let Some((pattern, arabic)) = Self::match_consonant_max(&remaining, max_len) {
-                result.push_str(arabic);
-                pos += pattern.len();
-                if has_separator && pos < len && chars[pos] == '-' {
-                    pos += 1;
-                }
-                continue;
-            }
-
-            // Skip bare separator
-            if chars[pos] == '-' {
-                pos += 1;
-                continue;
-            }
-
-            // Long vowel mappings
-            if let Some((pattern, arabic)) = Self::match_long_vowel(&remaining) {
-                result.push_str(arabic);
-                pos += pattern.len();
-                continue;
-            }
-
-            // Short vowels — same context-aware logic as rule_based_transliterate
-            if is_vowel_char(chars[pos]) {
-                let at_start = pos == 0;
-                let at_end = pos == len - 1;
-                let is_taa_marbuta = at_end
-                    && (chars[pos] == 'a' || chars[pos] == 'e')
-                    && pos > 0
-                    && !is_vowel_char(chars[pos - 1]);
-
-                if at_start {
-                    Self::push_initial_vowel(&mut result, chars[pos]);
-                } else if is_taa_marbuta {
-                    result.push_str("ة");
-                }
-                // Use DropMiddle-like behavior: drop middle vowels
-                pos += 1;
-                continue;
-            }
-
-            result.push(chars[pos]);
-            pos += 1;
+    /// Language-model score of a candidate in milli-units:
+    /// `1000 × LM_WEIGHT × log10(count)`, averaged over its words.
+    ///
+    /// Both lookup tables key on bare (unvocalized) forms — OpenSubtitles is
+    /// already stripped, Tashkeela is indexed by stripped base. Candidates
+    /// carry tanween (e.g. طبعاً), so strip before looking up, or every
+    /// tanween candidate misses the frequency signal.
+    ///
+    /// OpenSubtitles is the primary signal. Tashkeela (MSA/classical) is a
+    /// fallback for words OpenSubtitles lacks, discounted because it is
+    /// MSA-heavy and would otherwise outrank dialectal forms. Unknown words
+    /// score below anything attested.
+    fn lm_score(&self, candidate: &str) -> i64 {
+        let words: Vec<String> = candidate.split_whitespace().map(strip_tashkeel).collect();
+        if words.is_empty() {
+            return LM_UNKNOWN as i64;
         }
-
-        result
-    }
-
-    /// Context-aware rule-based transliteration with configurable vowel handling.
-    fn rule_based_transliterate(&self, word: &str, vowel_mode: VowelMode) -> String {
-        let chars: Vec<char> = word.chars().collect();
-        let len = chars.len();
-        let mut result = String::new();
-        let mut pos = 0;
-
-        while pos < len {
-            // 0. Context-aware hamza placement for '2'
-            if chars[pos] == '2' {
-                result.push_str(Self::resolve_hamza(&chars, pos));
-                pos += 1;
-                continue;
-            }
-
-            // Digraph separator: '-' limits the next match to single characters
-            let has_separator = pos + 1 < len && chars[pos + 1] == '-';
-            let remaining: String = chars[pos..].iter().collect();
-
-            // 1. Consonant mappings (limited to 1 char if separator follows)
-            let max_len = if has_separator { 1 } else { usize::MAX };
-            if let Some((pattern, arabic)) = Self::match_consonant_max(&remaining, max_len) {
-                result.push_str(arabic);
-                pos += pattern.len();
-                // Skip the separator
-                if has_separator && pos < len && chars[pos] == '-' {
-                    pos += 1;
+        let total: f64 = words
+            .iter()
+            .map(|w| {
+                if let Some(c) = self.frequency.count(w) {
+                    LM_WEIGHT * 1000.0 * (c.max(1) as f64).log10()
+                } else if let Some(c) = self.tashkeela.count(w) {
+                    LM_WEIGHT * 1000.0 * (c.max(1) as f64).log10() - LM_TASHKEELA_PENALTY
+                } else {
+                    LM_UNKNOWN
                 }
-                continue;
-            }
-
-            // Skip bare separator (e.g. between vowels)
-            if chars[pos] == '-' {
-                pos += 1;
-                continue;
-            }
-
-            // 2. Long vowel mappings (always kept)
-            if let Some((pattern, arabic)) = Self::match_long_vowel(&remaining) {
-                result.push_str(arabic);
-                pos += pattern.len();
-                continue;
-            }
-
-            // 3. Short vowels
-            if pos < len && is_vowel_char(chars[pos]) {
-                let at_start = pos == 0;
-                let at_end = pos == len - 1;
-                let before_final = pos + 1 == len - 1;
-
-                // Word-final 'a' or 'e' after a consonant → taa marbuta (ة)
-                // This is the most common Arabic feminine ending
-                let is_taa_marbuta = at_end
-                    && (chars[pos] == 'a' || chars[pos] == 'e')
-                    && pos > 0
-                    && !is_vowel_char(chars[pos - 1]);
-
-                match vowel_mode {
-                    VowelMode::KeepAll => {
-                        if at_start {
-                            Self::push_initial_vowel(&mut result, chars[pos]);
-                        } else if is_taa_marbuta {
-                            result.push_str("ة");
-                        } else if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
-                            result.push_str(arabic);
-                        }
-                    }
-                    VowelMode::DropAll => {
-                        if at_start {
-                            Self::push_initial_vowel(&mut result, chars[pos]);
-                        } else if is_taa_marbuta {
-                            result.push_str("ة");
-                        }
-                        // Otherwise drop
-                    }
-                    VowelMode::DropMiddle => {
-                        if at_start {
-                            Self::push_initial_vowel(&mut result, chars[pos]);
-                        } else if is_taa_marbuta {
-                            result.push_str("ة");
-                        } else if at_end || before_final {
-                            if let Some((_, arabic)) = Self::match_short_vowel(&remaining) {
-                                result.push_str(arabic);
-                            }
-                        }
-                        // Otherwise (middle) — drop
-                    }
-                }
-                pos += 1;
-                continue;
-            }
-
-            // 4. Unknown → keep as-is
-            result.push(chars[pos]);
-            pos += 1;
-        }
-
-        result
+            })
+            .sum();
+        (total / words.len() as f64) as i64
     }
 
     /// Resolve hamza (2) to the appropriate Arabic form based on surrounding vowel context.
@@ -1082,17 +828,6 @@ impl TransliterationEngine {
         None
     }
 
-    fn match_ambiguous_max(
-        input: &str,
-        max_len: usize,
-    ) -> Option<(&'static str, &'static str, &'static [&'static str])> {
-        AMBIGUOUS_CONSONANTS
-            .iter()
-            .filter(|(pattern, _, _)| pattern.len() <= max_len && input.starts_with(pattern))
-            .max_by_key(|(pattern, _, _)| pattern.len())
-            .map(|(pattern, primary, alternatives)| (*pattern, *primary, *alternatives))
-    }
-
     fn match_picker_max(
         input: &str,
         max_len: usize,
@@ -1141,16 +876,6 @@ pub struct LetterSlot {
     pub pattern: String,
     pub primary: String,
     pub alternatives: Vec<String>,
-}
-
-#[derive(Clone, Copy)]
-enum VowelMode {
-    /// Drop short vowels between consonants, keep at start/end/before-final
-    DropMiddle,
-    /// Keep all short vowels as standalone letters
-    KeepAll,
-    /// Drop all short vowels (except word-initial)
-    DropAll,
 }
 
 impl Default for TransliterationEngine {
@@ -1535,6 +1260,17 @@ mod tests {
                     choice, pattern, results);
             }
         }
+    }
+
+    #[test]
+    fn user_pick_beats_default_ranking() {
+        let e = engine();
+        let default = e.transliterate_word_ranked("7abibi", None);
+        let other = default.get(1).expect("needs a second candidate").clone();
+        let mut prefs = UserPreferences::new();
+        prefs.record("7abibi", &other);
+        let ranked = e.transliterate_word_ranked("7abibi", Some(&prefs));
+        assert_eq!(ranked.first(), Some(&other), "user's pick should come first: {ranked:?}");
     }
 
     #[test]

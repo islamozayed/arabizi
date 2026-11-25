@@ -148,7 +148,8 @@ jobs:
           if-no-files-found: error
 
   windows:
-    runs-on: windows-latest
+    # windows-2022 comes with NSIS installed.
+    runs-on: windows-2022
     timeout-minutes: 60
     defaults:
       run:
@@ -175,8 +176,14 @@ jobs:
 
       - name: Install NSIS
         run: |
-          if [ ! -x "/c/Program Files (x86)/NSIS/makensis.exe" ]; then choco install nsis -y --no-progress; fi
-          echo "MAKENSIS=/c/Program Files (x86)/NSIS/makensis.exe" >> "$GITHUB_ENV"
+          NSIS="/c/Program Files (x86)/NSIS/makensis.exe"
+          for attempt in 1 2 3; do
+            [ -x "$NSIS" ] && break
+            choco install nsis -y --no-progress || true
+          done
+          if [ ! -x "$NSIS" ]; then echo "::error::NSIS (makensis) is not available"; exit 1; fi
+          "$NSIS" -VERSION
+          echo "MAKENSIS=$NSIS" >> "$GITHUB_ENV"
 
       - name: Build the installer
         run: |

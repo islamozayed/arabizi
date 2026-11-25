@@ -9,7 +9,7 @@ window forward without clearing your text. Quit any older builds once before
 switching to a build with this protection; older builds do not participate in
 the single-instance check.
 
-Built with Tauri 2 + Rust. Runs on macOS, Windows, and Linux.
+Written in Rust with a native UI: AppKit on macOS (Windows and Linux front ends are in progress; those platforms stay on 0.9.3 until then). It uses about 45 MB of memory.
 
 ## Install
 
@@ -97,27 +97,25 @@ Franconvert checks for updates on each launch. When a new release is published, 
 
 ## Build
 
-On macOS, Franconvert opts out of native Writing Tools before creating its
-webviews and disables predictive text/autocorrection in the Franco input.
-The launch shortcut defaults to `Cmd+Shift+A`; custom shortcuts retain the
-Command modifier. These settings apply to Franconvert, not to system-wide Siri.
+The code is split so each platform only has to host the widget natively:
 
-macOS 27 has a [WebKit regression](https://bugs.webkit.org/show_bug.cgi?id=327446)
-where the Siri affordance can ignore the Writing Tools opt-out. If it persists
-on a particular OS build, the app-level setting may require Apple's WebKit fix.
-
-```bash
-cargo tauri dev      # development
-cargo tauri build    # release bundle
-node --test app/tests/*.test.cjs  # frontend regression tests
-```
-
-The Tauri config lives in [`app/tauri.conf.json`](app/tauri.conf.json); the transliteration engine is a separate crate at [`engine/`](engine/).
+| Crate | What it does |
+|---|---|
+| [`engine/`](engine/) | Transliteration and ranking. The corpus word lists are packed into sorted tables at compile time ([`engine/build.rs`](engine/build.rs)) and read in place, so they cost almost no RAM. |
+| [`core/`](core/) | Everything platform-independent: the typing session, letter/tashkeel pickers, settings, and the widget's layout and painting through a small `Painter` trait. |
+| [`app/`](app/) | The executable. `src/macos/` hosts the widget with AppKit, CoreGraphics and CoreText; `src/updater.rs` speaks the same signed `latest.json` protocol as the earlier Tauri releases. |
 
 ```bash
-cargo test -p arabizi-engine --release                                    # engine tests
+cargo run -p franconvert --release                  # run (macOS)
+scripts/bundle-macos.sh                             # Franconvert.app + updater archive in target/bundle
+cargo test --workspace --release                    # all tests
 cargo test -p arabizi-engine --release --test benchmark -- --nocapture    # ranking accuracy report
+node --test scripts/*.test.cjs                      # release tooling tests
 ```
+
+`FRANCONVERT_DATA_DIR=<dir>` runs with a separate data folder, so a dev build can sit next to an installed copy. For UI comparisons, build with `FEATURES=drive scripts/bundle-macos.sh` and replay a script with `scripts/drive-macos.sh` (steps are listed in [`app/src/macos/drive.rs`](app/src/macos/drive.rs)).
+
+The input field opts out of Writing Tools, autocorrect, smart quotes and text replacement. The launch shortcut defaults to `Cmd+Shift+A`.
 
 ## Data sources
 

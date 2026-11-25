@@ -10,12 +10,12 @@ for (const ending of ['\n', '\r\n']) {
   test(`release versions and notes work with ${ending === '\n' ? 'LF' : 'CRLF'} checkouts`, () => {
     const fixture = mkdtempSync(join(tmpdir(), 'franconvert-release-'));
     try {
-      for (const file of ['scripts/release-notes.cjs', 'app/Cargo.toml', 'Cargo.lock', 'app/tauri.conf.json', 'app/ui/CHANGELOG.json']) {
+      for (const file of ['scripts/release-notes.cjs', 'app/Cargo.toml', 'core/Cargo.toml', 'Cargo.lock', 'app/ui/CHANGELOG.json']) {
         const target = join(fixture, file);
         mkdirSync(dirname(target), { recursive: true });
         writeFileSync(target, readFileSync(join(repo, file), 'utf8').replace(/\r?\n/g, ending));
       }
-      const version = JSON.parse(readFileSync(join(repo, 'app/tauri.conf.json'), 'utf8')).version;
+      const version = readFileSync(join(repo, 'app/Cargo.toml'), 'utf8').match(/^version = "([^"]+)"/m)[1];
       const { title } = JSON.parse(readFileSync(join(repo, 'app/ui/CHANGELOG.json'), 'utf8')).versions[0];
       const env = { ...process.env, GITHUB_REF: `refs/tags/v${version}`, GITHUB_OUTPUT: join(fixture, 'output') };
       const run = () => spawnSync(process.execPath, [join(fixture, 'scripts/release-notes.cjs')], { env, encoding: 'utf8' });

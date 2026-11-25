@@ -1,6 +1,18 @@
 {
   "versions": [
     {
+      "version": "0.9.4",
+      "date": "2026-11-25",
+      "title": "Native, light on memory, and easier to edit",
+      "items": [
+        "<strong>A fraction of the memory.</strong> Franconvert is now a native Mac app instead of a web view, and its dictionaries are read straight from the app instead of being unpacked into memory. It uses about 45 MB instead of more than 250 MB.",
+        "<strong>Fix any word in place.</strong> Click a word in the preview to change it. The word you were typing is kept, so nothing gets lost when you jump back.",
+        "<strong>Pickers where you're looking.</strong> The letter and tashkeel pickers open right under the letters you selected, and wrap onto a second row instead of running past the edge of the widget.",
+        "<strong>A calmer look.</strong> Softer borders and shadows on pop-ups, a cleaner hint badge, and the logo lines up with what you type.",
+        "<strong>Your settings come with you.</strong> Theme, accent, shortcut and everything Franconvert has learned carry over from the previous version."
+      ]
+    },
+    {
       "version": "0.9.3",
       "date": "2026-10-31",
       "title": "Smarter suggestions, a clipboard that stays put, and smoother typing",

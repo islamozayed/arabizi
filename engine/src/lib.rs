@@ -5,6 +5,7 @@ mod cldr_ar;
 mod engine;
 mod frequency;
 mod lattice;
+mod table;
 mod tashkeela;
 mod user_prefs;
 

@@ -1,34 +1,33 @@
 [package]
 name = "franconvert"
-version = "0.9.3"
+version = "0.9.4"
 edition = "2024"
+description = "Type Franco Arabic, get Arabic script — a tray widget with a native UI on each platform."
+license = "MIT"
+
+[features]
+# Scripted UI driver for screenshot comparisons (never in releases).
+drive = []
 
 [dependencies]
-arabizi-engine = { path = "../engine" }
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-clipboard-manager = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-process = "2"
-tauri-plugin-single-instance = "2"
-serde = { version = "1", features = ["derive"] }
+franconvert-core = { path = "../core" }
 serde_json = "1"
-enigo = "0.2"
-window-vibrancy = "0.6"
-image = { version = "0.25", default-features = false, features = ["png"] }
-raw-window-handle = "0.6"
+# Updater: fetch latest.json, verify the minisign signature, unpack.
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
+minisign-verify = "0.3"
+base64 = "0.22"
+flate2 = "1"
+tar = "0.4"
+semver = "1"
+global-hotkey = "0.10"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSTextCheckingClient"] }
-objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKWebViewConfiguration", "objc2-app-kit"] }
-
-# Windows-only deps
-[target.'cfg(windows)'.dependencies]
-winreg = "0.56"
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-
-[dev-dependencies]
-tauri = { version = "2", features = ["test"] }
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-text = "0.3"
+objc2-quartz-core = "0.3"
+block2 = "0.6"
+dispatch2 = "0.3"

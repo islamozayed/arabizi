@@ -10,61 +10,40 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# The native macOS app ships first. Windows and Linux installs of the Tauri
+# builds (0.9.x) stay on 0.9.3 until their native front ends exist: they find
+# no entry for their platform in latest.json and simply report no update.
 jobs:
-  build:
+  macos:
+    runs-on: macos-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-          - platform: 'windows-latest'
-            args: ''
-          - platform: 'ubuntu-22.04'
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
-    # Apple notarization can occasionally queue for a while, but a broken run
-    # must never consume a runner for most of a day.
+    # Notarization can queue for a while, but a broken run must never hold a
+    # runner for most of a day.
     timeout-minutes: 90
+    env:
+      TARGET: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v7
 
       - name: Verify release versions and prepare notes
         id: release-notes
-        run: node scripts/release-notes.cjs
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev
+        run: node scripts/release-notes.cjs > "$RUNNER_TEMP/notes.md"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './ -> target'
 
       - name: Run regression tests
-        shell: bash
         run: |
           cargo test --locked --workspace
-          node --test app/tests/*.test.cjs scripts/*.test.cjs
+          node --test scripts/*.test.cjs
 
-      - name: Validate Apple signing credentials
-        if: matrix.platform == 'macos-latest'
+      - name: Validate signing secrets
         env:
           CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -72,19 +51,32 @@ jobs:
           API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
           API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          for name in CERTIFICATE CERTIFICATE_PASSWORD SIGNING_IDENTITY API_KEY_CONTENT API_KEY_ID API_ISSUER TEAM_ID; do
+          for name in CERTIFICATE CERTIFICATE_PASSWORD SIGNING_IDENTITY API_KEY_CONTENT API_KEY_ID API_ISSUER UPDATER_KEY; do
             if [ -z "${!name}" ]; then
-              echo "::error::Required macOS release secret $name is missing"
+              echo "::error::Required release secret $name is missing"
               exit 1
             fi
           done
 
-      # Tauri expects the App Store Connect private key on disk. The secret
-      # contains the .p8 file contents; APPLE_API_KEY is the separate key ID.
-      - name: Write Apple notarization key
-        if: matrix.platform == 'macos-latest'
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          KEYCHAIN_PW=$(openssl rand -hex 16)
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+
+      - name: Write notarization key
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -94,34 +86,67 @@ jobs:
           chmod 600 "$key_path"
           echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build and sign Franconvert.app
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: scripts/bundle-macos.sh "$TARGET" dist
+
+      - name: Notarize and staple
+        env:
+          API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          notarize() {
+            xcrun notarytool submit "$1" --key "$APPLE_API_KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" --wait --timeout 60m
+          }
+          ditto -c -k --keepParent dist/Franconvert.app "$RUNNER_TEMP/app.zip"
+          notarize "$RUNNER_TEMP/app.zip"
+          xcrun stapler staple dist/Franconvert.app
+          # Re-pack the updater archive with the stapled app.
+          scripts/archive-macos.sh dist/Franconvert.app
+          # Disk image for new installs.
+          DMG="dist/Franconvert_${VERSION}_aarch64.dmg"
+          ln -s /Applications dist/dmg-applications-link
+          mkdir dist/dmg && cp -R dist/Franconvert.app dist/dmg/ && mv dist/dmg-applications-link dist/dmg/Applications
+          hdiutil create -volname Franconvert -srcfolder dist/dmg -ov -format UDZO "$DMG"
+          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$DMG"
+          notarize "$DMG"
+          xcrun stapler staple "$DMG"
+
+      - name: Sign the updater archive
+        env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Developer ID signing + notarization through App Store Connect.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: ./app
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Franconvert ${{ github.ref_name }}'
-          releaseBody: ${{ steps.release-notes.outputs.body }}
-          releaseDraft: true
-          prerelease: false
-          updaterJsonPreferNsis: false
-          args: ${{ matrix.args }}
+        run: |
+          # Asset name matches what the Tauri builds published, and the
+          # signature comes from the same signer and key they verify against.
+          mv dist/Franconvert.app.tar.gz dist/Franconvert_aarch64.app.tar.gz
+          npx --yes @tauri-apps/cli@2 signer sign dist/Franconvert_aarch64.app.tar.gz
 
-  # tauri-action uploads into a draft while the matrix is running. Publish only
-  # after every platform succeeds, so a notarization failure can never ship an
-  # unsigned or incomplete macOS release.
+      - name: Write latest.json
+        run: |
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          APP="${BASE}/Franconvert_aarch64.app.tar.gz,dist/Franconvert_aarch64.app.tar.gz.sig"
+          node scripts/latest-json.cjs "$VERSION" "$RUNNER_TEMP/notes.md" dist/latest.json \
+            "darwin-aarch64=$APP" "darwin-aarch64-app=$APP"
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "Franconvert $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" \
+            "dist/Franconvert_${VERSION}_aarch64.dmg" \
+            dist/Franconvert_aarch64.app.tar.gz \
+            dist/Franconvert_aarch64.app.tar.gz.sig \
+            dist/latest.json
+
+  # Publish only after the build succeeded, so a notarization failure can
+  # never ship an unsigned or incomplete release.
   publish:
-    needs: build
+    needs: macos
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

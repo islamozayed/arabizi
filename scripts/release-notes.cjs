@@ -4,11 +4,12 @@ const { resolve } = require('node:path');
 
 const root = resolve(__dirname, '..');
 const read = path => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, '\n');
-const version = JSON.parse(read('app/tauri.conf.json')).version;
-const cargoVersion = read('app/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
+const version = read('app/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
+const coreVersion = read('core/Cargo.toml').match(/^version = "([^"]+)"/m)?.[1];
 const lockedVersion = read('Cargo.lock').match(/name = "franconvert"\nversion = "([^"]+)"/)?.[1];
 const notes = JSON.parse(read('app/ui/CHANGELOG.json')).versions[0];
-assert.equal(cargoVersion, version, 'Cargo and Tauri versions must match');
+assert.ok(version, 'app/Cargo.toml must declare a version');
+assert.equal(coreVersion, version, 'app and core versions must match');
 assert.equal(lockedVersion, version, 'Cargo.lock version must match');
 assert.equal(notes.version, version, 'Latest changelog entry must match');
 if (process.env.GITHUB_REF?.startsWith('refs/tags/')) {

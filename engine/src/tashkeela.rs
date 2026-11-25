@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use crate::table::{read_u16, read_u32, Table};
 
 /// Vocalized Arabic word list extracted from the Tashkeela corpus (Taha
 /// Zerrouki, GPL). One vocalized form per line, `<form>\t<count>`, sorted by
@@ -12,86 +12,64 @@ use std::collections::HashMap;
 ///
 /// The file is optional: if it's empty (placeholder before the pipeline runs)
 /// the engine falls back to behaviour identical to before this module existed.
-const TASHKEELA_DATA: &str = include_str!("../data/tashkeela_vocalized.txt");
+/// Packed into a sorted table keyed by the tashkeel-stripped base form by
+/// `build.rs`; lookups binary-search it without touching the heap.
+const TASHKEELA_DATA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tashkeela.bin"));
 
+/// base form (tashkeel-stripped) → (rank (0 = most common), corpus count
+/// summed over variants, every vocalized variant with its count, most
+/// frequent first — e.g. أَمْر the noun and أَمَرَ the verb).
 pub struct TashkeelaList {
-    /// base form (tashkeel-stripped) → (rank (0 = most common), corpus count
-    /// summed over variants, best vocalized variant from the corpus).
-    entries: HashMap<String, (u32, u32, &'static str)>,
-    /// Every vocalized variant with its count, only for bases that have more
-    /// than one (e.g. أَمْر the noun and أَمَرَ the verb). Most-frequent first.
-    variants: HashMap<String, Vec<(&'static str, u32)>>,
+    table: Table,
 }
 
 impl TashkeelaList {
     pub fn load() -> Self {
-        let mut entries: HashMap<String, (u32, u32, &'static str)> = HashMap::new();
-        let mut variants: HashMap<String, Vec<(&'static str, u32)>> = HashMap::new();
-        for (rank, line) in TASHKEELA_DATA.lines().enumerate() {
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-            let (vocal, count) = match line.split_once('\t') {
-                Some((v, c)) => (v, c.trim().parse::<u32>().unwrap_or(1)),
-                None => (line, 1),
-            };
-            let base = strip_tashkeel(vocal);
-            if base.is_empty() {
-                continue;
-            }
-            // First occurrence is the most-frequent variant (the file lists
-            // each base's variants together, most frequent first). Later lines
-            // for the same base are extra variants; counts add up.
-            match entries.get_mut(&base) {
-                Some(e) => {
-                    let first = (e.2, e.1);
-                    e.1 += count;
-                    variants.entry(base).or_insert_with(|| vec![first]).push((vocal, count));
-                }
-                None => {
-                    entries.insert(base, (rank as u32, count, vocal));
-                }
-            }
-        }
-        TashkeelaList { entries, variants }
+        TashkeelaList { table: Table::new(TASHKEELA_DATA) }
     }
 
     /// Rank of a base (unvocalized) form. Lower = more common.
     #[allow(dead_code)] // ranking now uses `count`
     pub fn rank(&self, base: &str) -> Option<u32> {
-        self.entries.get(base).map(|e| e.0)
+        self.table.get(base).map(|p| read_u32(p, 0))
     }
 
     /// Corpus count of a base (unvocalized) form.
     pub fn count(&self, base: &str) -> Option<u32> {
-        self.entries.get(base).map(|e| e.1)
+        self.table.get(base).map(|p| read_u32(p, 4))
     }
 
     /// All known vocalized variants of a base form with their counts,
     /// most frequent first. Empty if the base is unknown.
     pub fn variants(&self, base: &str) -> Vec<(&'static str, u32)> {
-        if let Some(v) = self.variants.get(base) {
-            return v.clone();
+        let Some(p) = self.table.get(base) else { return Vec::new() };
+        let n = read_u16(p, 8) as usize;
+        let mut out = Vec::with_capacity(n);
+        let mut at = 10;
+        for _ in 0..n {
+            let (v, c, next) = variant_at(p, at);
+            out.push((v, c));
+            at = next;
         }
-        self.entries.get(base).map(|e| vec![(e.2, e.1)]).unwrap_or_default()
+        out
     }
 
     /// Most-frequent vocalized variant for a base form, if known.
-    pub fn vocalized(&self, base: &str) -> Option<&str> {
-        self.entries.get(base).map(|e| e.2)
+    pub fn vocalized(&self, base: &str) -> Option<&'static str> {
+        self.table.get(base).map(|p| variant_at(p, 10).0)
     }
 
     #[cfg(test)]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.table.len()
     }
 }
 
-fn strip_tashkeel(s: &str) -> String {
-    s.chars()
-        .filter(|c| !matches!(*c as u32, 0x064B..=0x0652 | 0x0670 | 0x0610..=0x061A))
-        .collect()
+/// Reads one `(u16 len, bytes, u32 count)` variant; returns it and the next offset.
+fn variant_at(p: &'static [u8], at: usize) -> (&'static str, u32, usize) {
+    let len = read_u16(p, at) as usize;
+    let s = std::str::from_utf8(&p[at + 2..at + 2 + len]).expect("variants are UTF-8");
+    (s, read_u32(p, at + 2 + len), at + 2 + len + 4)
 }
 
 #[cfg(test)]
@@ -110,7 +88,7 @@ mod tests {
         // assert real behaviour once it has entries.
         if t.len() > 0 {
             // Pick any base in the map and verify round-trip.
-            let (base, _) = t.entries.iter().next().unwrap();
+            let base = t.table.key(0);
             assert!(t.vocalized(base).is_some());
         }
     }

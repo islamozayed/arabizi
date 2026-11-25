@@ -5,7 +5,9 @@
       "date": "2026-11-25",
       "title": "Native, light on memory, and easier to edit",
       "items": [
-        "<strong>A fraction of the memory.</strong> Franconvert is now a native Mac app instead of a web view, and its dictionaries are read straight from the app instead of being unpacked into memory. It uses about 45 MB instead of more than 250 MB.",
+        "<strong>A fraction of the memory.</strong> Franconvert is now a native app on Mac and Windows instead of a web view, and its dictionaries are read straight from the app instead of being unpacked into memory. It uses about 45 MB on a Mac instead of more than 250 MB, and about 60 MB on Windows instead of more than 300 MB.",
+        "<strong>Frosted glass on Windows.</strong> On Windows 11 the widget sits on the system's blurred backdrop and follows your accent colour and light or dark mode.",
+        "<strong>Works with screen readers.</strong> Every suggestion, button and switch is announced and can be used with VoiceOver on Mac and Narrator on Windows.",
         "<strong>Fix any word in place.</strong> Click a word in the preview to change it. The word you were typing is kept, so nothing gets lost when you jump back.",
         "<strong>Pickers where you're looking.</strong> The letter and tashkeel pickers open right under the letters you selected, and wrap onto a second row instead of running past the edge of the widget.",
         "<strong>A calmer look.</strong> Softer borders and shadows on pop-ups, a cleaner hint badge, and the logo lines up with what you type.",

@@ -136,6 +136,33 @@ pub fn install(archive: &[u8], bundle: &Path) -> Result<(), String> {
     result
 }
 
+/// Windows: saves the verified installer to the temp folder; it runs when
+/// the user restarts (`run_installer`).
+#[cfg(windows)]
+pub fn stage(installer: &[u8], release: &Release) -> Result<PathBuf, String> {
+    let name = release.url.rsplit('/').next().filter(|n| n.to_ascii_lowercase().ends_with(".exe")).unwrap_or("Franconvert-setup.exe");
+    let dir = std::env::temp_dir().join(format!("franconvert-update-{}", release.version));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(name);
+    std::fs::write(&path, installer).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
+/// Windows: once this process has exited, runs the installer silently and
+/// starts the updated app.
+#[cfg(windows)]
+pub fn run_installer(installer: &Path, exe: &Path) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // `ping` is the classic one-second pause without a console window.
+    let script = format!(
+        "/c ping -n 2 127.0.0.1 >nul & start \"\" /wait \"{}\" /S & start \"\" \"{}\"",
+        installer.display(),
+        exe.display()
+    );
+    let _ = std::process::Command::new("cmd").raw_arg(script).creation_flags(CREATE_NO_WINDOW).spawn();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -12,14 +12,19 @@ mod updater;
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(windows)]
+mod windows;
 
 fn main() {
     #[cfg(target_os = "macos")]
     macos::run();
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    windows::run();
+
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
-        eprintln!("The native Windows and Linux front ends are not written yet; see README.");
+        eprintln!("The native Linux front end is not written yet; see README.");
         std::process::exit(1);
     }
 }

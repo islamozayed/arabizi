@@ -5,16 +5,27 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      attach_to:
+        description: 'Add the Windows build to this existing release (e.g. v0.9.4). Empty: build and test only.'
+        required: false
+        default: ''
+      macos:
+        description: 'Also build macOS (signing and notarization dry run)'
+        type: boolean
+        default: false
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-# The native macOS app ships first. Windows and Linux installs of the Tauri
-# builds (0.9.x) stay on 0.9.3 until their native front ends exist: they find
-# no entry for their platform in latest.json and simply report no update.
+# A tag builds macOS and Windows, then publishes one release with a
+# latest.json covering both. Linux installs of the Tauri builds (0.9.x) stay on
+# 0.9.3 until their native front end exists: they find no entry for their
+# platform in latest.json and simply report no update.
 jobs:
   macos:
+    if: github.event_name == 'push' || inputs.macos
     runs-on: macos-latest
     permissions:
       contents: write
@@ -126,33 +137,164 @@ jobs:
           mv dist/Franconvert.app.tar.gz dist/Franconvert_aarch64.app.tar.gz
           npx --yes @tauri-apps/cli@2 signer sign dist/Franconvert_aarch64.app.tar.gz
 
-      - name: Write latest.json
-        run: |
-          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
-          APP="${BASE}/Franconvert_aarch64.app.tar.gz,dist/Franconvert_aarch64.app.tar.gz.sig"
-          node scripts/latest-json.cjs "$VERSION" "$RUNNER_TEMP/notes.md" dist/latest.json \
-            "darwin-aarch64=$APP" "darwin-aarch64-app=$APP"
+      - name: Keep the build for the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist/Franconvert_${{ env.VERSION }}_aarch64.dmg
+            dist/Franconvert_aarch64.app.tar.gz
+            dist/Franconvert_aarch64.app.tar.gz.sig
+          if-no-files-found: error
 
-      - name: Create draft release
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify release versions
+        run: |
+          node scripts/release-notes.cjs > /dev/null
+          echo "VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+
+      - name: Run regression tests
+        run: cargo test --locked --workspace
+
+      - name: Build franconvert.exe
+        run: cargo build --locked --release -p franconvert
+
+      - name: Install NSIS
+        run: |
+          if [ ! -x "/c/Program Files (x86)/NSIS/makensis.exe" ]; then choco install nsis -y --no-progress; fi
+          echo "MAKENSIS=/c/Program Files (x86)/NSIS/makensis.exe" >> "$GITHUB_ENV"
+
+      - name: Build the installer
+        run: |
+          mkdir -p dist
+          "$MAKENSIS" -V2 -DVERSION="$VERSION" -DOUTFILE="..\\dist\\Franconvert_${VERSION}_x64-setup.exe" installer/franconvert.nsi
+          # The same installer under another name, to try out below.
+          "$MAKENSIS" -V2 -DVERSION="$VERSION" -DPRODUCT=FranconvertCiTest -DOUTFILE="..\\dist\\ci-test-setup.exe" installer/franconvert.nsi
+
+      - name: Install, upgrade and uninstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = "$env:LOCALAPPDATA\FranconvertCiTest"
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\FranconvertCiTest'
+          $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\FranconvertCiTest.lnk"
+          foreach ($pass in 'install', 'upgrade') {
+            Start-Process dist\ci-test-setup.exe -ArgumentList '/S' -Wait
+            if (-not (Test-Path "$dir\franconvert.exe")) { throw "${pass}: franconvert.exe missing" }
+            if ((Get-Item "$dir\franconvert.exe").VersionInfo.ProductVersion -notlike "$env:VERSION*") { throw "${pass}: wrong exe version" }
+            if ((Get-ItemProperty $key).DisplayVersion -ne $env:VERSION) { throw "${pass}: uninstall entry missing" }
+            if (-not (Test-Path $lnk)) { throw "${pass}: Start menu shortcut missing" }
+          }
+          # _? runs the uninstaller in place, so this waits for it.
+          Start-Process "$dir\uninstall.exe" -ArgumentList '/S', "_?=$dir" -Wait
+          if (Test-Path "$dir\franconvert.exe") { throw 'uninstall left franconvert.exe' }
+          if (Test-Path $key) { throw 'uninstall left the uninstall entry' }
+          if (Test-Path $lnk) { throw 'uninstall left the shortcut' }
+
+      - name: Sign the installer for the updater
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --title "Franconvert $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" \
-            "dist/Franconvert_${VERSION}_aarch64.dmg" \
-            dist/Franconvert_aarch64.app.tar.gz \
-            dist/Franconvert_aarch64.app.tar.gz.sig \
-            dist/latest.json
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then echo "::error::Required release secret TAURI_SIGNING_PRIVATE_KEY is missing"; exit 1; fi
+          npx --yes @tauri-apps/cli@2 signer sign "dist/Franconvert_${VERSION}_x64-setup.exe"
 
-  # Publish only after the build succeeded, so a notarization failure can
-  # never ship an unsigned or incomplete release.
+      - name: Keep the build for the release
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/Franconvert_${{ env.VERSION }}_x64-setup.exe
+            dist/Franconvert_${{ env.VERSION }}_x64-setup.exe.sig
+          if-no-files-found: error
+
+  # Publish only after every build succeeded, so a failed notarization or
+  # installer test can never ship an incomplete release.
   publish:
-    needs: macos
+    needs: [macos, windows]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Publish completed release
+      - uses: actions/checkout@v7
+
+      - name: Prepare notes
+        run: node scripts/release-notes.cjs > "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write latest.json
+        run: |
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          APP="${BASE}/Franconvert_aarch64.app.tar.gz,dist/Franconvert_aarch64.app.tar.gz.sig"
+          WIN="${BASE}/Franconvert_${VERSION}_x64-setup.exe,dist/Franconvert_${VERSION}_x64-setup.exe.sig"
+          # The Tauri builds look for -nsis or -msi by how they were
+          # installed; the one installer replaces both.
+          node scripts/latest-json.cjs "$VERSION" "$RUNNER_TEMP/notes.md" dist/latest.json \
+            "darwin-aarch64=$APP" "darwin-aarch64-app=$APP" \
+            "windows-x86_64=$WIN" "windows-x86_64-nsis=$WIN" "windows-x86_64-msi=$WIN"
+
+      - name: Create and publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "Franconvert $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" dist/*
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+
+  # Adds the Windows build to a release that's already out (manual runs).
+  attach:
+    needs: windows
+    if: github.event_name == 'workflow_dispatch' && inputs.attach_to != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.attach_to }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare notes
+        run: |
+          node scripts/release-notes.cjs > "$RUNNER_TEMP/notes.md"
+          VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' app/Cargo.toml | head -1)
+          if [ "$TAG" != "v$VERSION" ]; then echo "::error::This commit is $VERSION, not $TAG"; exit 1; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: dist
+
+      - name: Add Windows to latest.json
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern latest.json --dir "$RUNNER_TEMP/base"
+          WIN="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Franconvert_${VERSION}_x64-setup.exe,dist/Franconvert_${VERSION}_x64-setup.exe.sig"
+          LATEST_BASE="$RUNNER_TEMP/base/latest.json" node scripts/latest-json.cjs "$VERSION" "$RUNNER_TEMP/notes.md" dist/latest.json \
+            "windows-x86_64=$WIN" "windows-x86_64-nsis=$WIN" "windows-x86_64-msi=$WIN"
+          cat dist/latest.json
+
+      - name: Upload to the release
+        run: |
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist/Franconvert_${VERSION}_x64-setup.exe" "dist/Franconvert_${VERSION}_x64-setup.exe.sig" dist/latest.json
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/notes.md"

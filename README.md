@@ -9,7 +9,7 @@ window forward without clearing your text. Quit any older builds once before
 switching to a build with this protection; older builds do not participate in
 the single-instance check.
 
-Written in Rust with a native UI: AppKit on macOS (Windows and Linux front ends are in progress; those platforms stay on 0.9.3 until then). It uses about 45 MB of memory.
+Written in Rust with a native UI: AppKit on macOS and Win32 with Direct2D on Windows (the Linux front end is in progress; Linux stays on 0.9.3 until then). It uses about 45 MB of memory on macOS and about 60 MB on Windows.
 
 ## Install
 
@@ -26,8 +26,8 @@ Grab the latest installer for your platform from the [**Releases page**](https:/
 
 ### Windows
 
-1. Download `Franconvert_<version>_x64-setup.exe` (or the `.msi` if you prefer)
-2. Run the installer
+1. Download `Franconvert_<version>_x64-setup.exe`
+2. Run the installer (it installs for your user only, no administrator rights needed, and replaces an earlier version)
 3. Press `Ctrl+Shift+A` anywhere to summon the overlay
 
 If Windows SmartScreen flags the installer ("Windows protected your PC"), click **More info → Run anyway**.
@@ -103,11 +103,12 @@ The code is split so each platform only has to host the widget natively:
 |---|---|
 | [`engine/`](engine/) | Transliteration and ranking. The corpus word lists are packed into sorted tables at compile time ([`engine/build.rs`](engine/build.rs)) and read in place, so they cost almost no RAM. |
 | [`core/`](core/) | Everything platform-independent: the typing session, letter/tashkeel pickers, settings, and the widget's layout and painting through a small `Painter` trait. |
-| [`app/`](app/) | The executable. `src/macos/` hosts the widget with AppKit, CoreGraphics and CoreText; `src/updater.rs` speaks the same signed `latest.json` protocol as the earlier Tauri releases. |
+| [`app/`](app/) | The executable. `src/macos/` hosts the widget with AppKit, CoreGraphics and CoreText; `src/windows/` with Win32, Direct2D, DirectWrite and DirectComposition over the system acrylic backdrop; `src/updater.rs` speaks the same signed `latest.json` protocol as the earlier Tauri releases. |
 
 ```bash
-cargo run -p franconvert --release                  # run (macOS)
+cargo run -p franconvert --release                  # run (macOS, Windows)
 scripts/bundle-macos.sh                             # Franconvert.app + updater archive in target/bundle
+makensis -DVERSION=<version> installer/franconvert.nsi   # Windows installer (after a release build)
 cargo test --workspace --release                    # all tests
 cargo test -p arabizi-engine --release --test benchmark -- --nocapture    # ranking accuracy report
 node --test scripts/*.test.cjs                      # release tooling tests

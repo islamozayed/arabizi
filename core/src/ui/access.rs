@@ -1,6 +1,7 @@
-//! Accessibility: describes what's on screen for VoiceOver (and later the
-//! Windows/Linux screen-reader APIs). The canvas is custom-drawn, so each
-//! platform turns these nodes into native accessibility elements.
+//! Accessibility: describes what's on screen for VoiceOver and Narrator
+//! (macOS AppKit, Windows UI Automation; Linux's AT-SPI to come). The canvas
+//! is custom-drawn, so each platform turns these nodes into native
+//! accessibility elements.
 
 use super::geom::Rect;
 use super::widget::*;
@@ -131,7 +132,7 @@ impl Widget {
         out
     }
 
-    /// Activates a node (VoiceOver's press action).
+    /// Activates a node (a screen reader's press / invoke action).
     pub fn ax_press(&mut self, t: Target) {
         self.click(t, 1);
     }

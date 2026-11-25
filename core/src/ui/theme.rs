@@ -98,7 +98,9 @@ impl Theme {
             large,
             bg_surface: if dark { Color::rgba(33, 33, 33, 0.6) } else { Color::rgba(245, 245, 245, 0.6) },
             outline,
-            separator: outline.with_alpha_mul(0.25),
+            // The light outline is as pale as the surface, so light lines are a
+            // faint black instead.
+            separator: if dark || high_contrast { outline.with_alpha_mul(0.4) } else { Color::rgba(0, 0, 0, 0.1) },
             text_primary: tp,
             text_secondary: ts,
             text_tertiary: tt,
